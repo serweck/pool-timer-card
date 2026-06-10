@@ -168,9 +168,11 @@ const DEFAULT_PRESETS = [
   { name: 'Invierno', schedule: [{ start: '10:00', end: '13:00' }] },
 ];
 
-/* Default durations (hours) for the quick actions */
-const DEFAULT_FLOCCULANT_HOURS = 2;
-const DEFAULT_PRODUCT_HOURS = 3;
+/* Default quick actions (configurable via card config `quick_actions:`) */
+const DEFAULT_QUICK_ACTIONS = [
+  { name: 'Flocculant', hours: 2, icon: '🌀', after: 'OFF' },
+  { name: 'Treatment', hours: 3, icon: '🧪', after: 'Auto' },
+];
 
 /* ------------------------------------------------------------------ */
 /*  Helper: polar→cartesian                                            */
@@ -252,10 +254,8 @@ class PoolTimerCard extends HTMLElement {
       entity: config.entity,
       schedule_entity: config.schedule_entity || 'input_text.pool_timer_schedule',
       mode_entity: config.mode_entity || 'input_select.pool_timer_mode',
-      // New: persists the active preset + any running timed action (survives reloads)
       state_entity: config.state_entity || 'input_text.pool_timer_state',
-      flocculant_hours: num(config.flocculant_hours, DEFAULT_FLOCCULANT_HOURS),
-      product_hours: num(config.product_hours, DEFAULT_PRODUCT_HOURS),
+      quick_actions: this._parseQuickActions(config),
       presets: (Array.isArray(config.presets) && config.presets.length)
         ? config.presets
         : DEFAULT_PRESETS,
@@ -264,6 +264,25 @@ class PoolTimerCard extends HTMLElement {
     if (config.schedule && Array.isArray(config.schedule) && !this._initialized) {
       this._applyDefaultSchedule(config.schedule);
     }
+  }
+
+  _parseQuickActions(config) {
+    // Support new quick_actions format, fall back to legacy flocculant_hours/product_hours
+    if (Array.isArray(config.quick_actions) && config.quick_actions.length) {
+      return config.quick_actions.map(a => ({
+        name: a.name || 'Action',
+        hours: num(a.hours, 2),
+        icon: a.icon || '⏱️',
+        after: a.after || 'Auto',  // 'OFF', 'Auto', or preset name
+      }));
+    }
+    // Legacy: build default actions from flocculant_hours / product_hours
+    const actions = [];
+    const flocHours = num(config.flocculant_hours, 2);
+    const prodHours = num(config.product_hours, 3);
+    if (flocHours > 0) actions.push({ name: 'Flocculant', hours: flocHours, icon: '🌀', after: 'OFF' });
+    if (prodHours > 0) actions.push({ name: 'Treatment', hours: prodHours, icon: '🧪', after: 'Auto' });
+    return actions.length ? actions : DEFAULT_QUICK_ACTIONS;
   }
 
   set hass(hass) {
@@ -460,21 +479,34 @@ class PoolTimerCard extends HTMLElement {
   _computeDesiredState() {
     const now = Date.now();
 
-    if (this._action === 'product') {
+    // Check if a timed action is running
+    if (typeof this._action === 'number') {
+      const action = this._config.quick_actions?.[this._action];
+      if (!action) {
+        this._action = null;
+        return null;
+      }
       if (now < this._actionUntil) return 'on';
-      // Treatment finished -> restore the previous base mode.
-      this._action = null;
-      this._actionUntil = 0;
-      this._mode = this._returnMode || 'Auto';
-      this._saveMode();
-      this._saveState();
-    } else if (this._action === 'flocculant') {
-      if (now < this._actionUntil) return 'on';
-      // Circulation finished -> enter the settling lock (pump stays off).
-      this._action = 'settling';
-      this._actionUntil = 0;
-      this._saveState();
-      return 'off';
+      // Action finished -> apply the "after" behavior
+      if (action.after === 'OFF') {
+        // Lock OFF (settling state)
+        this._action = 'settling';
+        this._actionUntil = 0;
+        this._saveState();
+        return 'off';
+      } else if (action.after === 'Auto') {
+        this._action = null;
+        this._actionUntil = 0;
+        this._saveState();
+        return null;  // Let schedule evaluation take over
+      } else {
+        // Return to preset (or treat as Auto if preset not found)
+        this._action = null;
+        this._actionUntil = 0;
+        this._preset = action.after;
+        this._saveState();
+        return null;
+      }
     } else if (this._action === 'settling') {
       return 'off';
     }
@@ -655,16 +687,16 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
-  // Start a timed action ('flocculant' or 'product').
-  _startAction(type) {
-    const hours = type === 'flocculant'
-      ? this._config.flocculant_hours
-      : this._config.product_hours;
+  // Start a timed action by index.
+  _startAction(actionIdx) {
+    if (actionIdx < 0 || actionIdx >= (this._config.quick_actions || []).length) return;
+    const action = this._config.quick_actions[actionIdx];
+    const hours = action.hours || 2;
     // Remember where to return to, unless we're already inside an action.
     if (!this._action || this._action === 'settling') {
       this._returnMode = this._mode || 'Auto';
     }
-    this._action = type;
+    this._action = actionIdx;
     this._actionUntil = Date.now() + hours * 3600 * 1000;
     this._saveState();
     this._evaluateSchedule();
@@ -898,9 +930,8 @@ class PoolTimerCard extends HTMLElement {
     /* ---- presets, quick actions & action banner ---- */
     const presets = this._config.presets || [];
     const hasPresets = presets.length > 0;
-    const flocHours = this._config.flocculant_hours || 0;
-    const prodHours = this._config.product_hours || 0;
-    const hasActions = flocHours > 0 || prodHours > 0;
+    const quickActions = this._config.quick_actions || [];
+    const hasActions = quickActions.length > 0;
 
     const presetsHTML = hasPresets
       ? `<select class="preset-select" data-select="preset">
@@ -919,9 +950,9 @@ class PoolTimerCard extends HTMLElement {
     };
 
     const actionsHTML = hasActions
-      ? `
-      ${flocHours > 0 ? `<button class="chip action-btn ${this._action === 'flocculant' ? 'chip--warn-active' : ''}" data-action="flocculant">🌀 ${t('flocculant', lang)}</button>` : ''}
-      ${prodHours > 0 ? `<button class="chip action-btn ${this._action === 'product' ? 'chip--warn-active' : ''}" data-action="product">🧪 ${t('product', lang)}</button>` : ''}`
+      ? quickActions.map((action, idx) =>
+          `<button class="chip action-btn ${this._action === idx ? 'chip--warn-active' : ''}" data-action-idx="${idx}">${action.icon} ${action.name}</button>`
+        ).join('')
       : '';
 
     /* ---- mode selector: dropdown if presets, buttons if not ---- */
@@ -941,10 +972,12 @@ class PoolTimerCard extends HTMLElement {
         </div>`;
 
     let bannerHTML = '';
-    if (this._action === 'product' || this._action === 'flocculant') {
+    if (typeof this._action === 'number' && quickActions[this._action]) {
+      const action = quickActions[this._action];
       const remaining = fmtRemaining(this._actionUntil - Date.now());
-      const label = this._action === 'product' ? t('product_running', lang) : t('flocculant_running', lang);
-      const retTxt = this._action === 'product' ? ` · ${t('returns_to', lang)} ${this._returnMode}` : '';
+      const isFlocculant = action.after === 'OFF';
+      const label = `${action.icon} ${action.name}: ${isFlocculant ? 'running' : 'active'}`;
+      const retTxt = !isFlocculant ? ` · ${t('returns_to', lang)} ${action.after}` : '';
       bannerHTML = `
         <div class="banner banner--running">
           <span class="banner-txt">⏳ ${label} · ${remaining} ${t('remaining', lang)}${retTxt}</span>
@@ -1415,10 +1448,11 @@ class PoolTimerCard extends HTMLElement {
       presetSelect.addEventListener('blur', () => { this._selectOpen = false; });
     }
 
-    // Quick-action buttons (flocculant / product)
+    // Quick-action buttons
     root.querySelectorAll('.action-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        this._startAction(e.currentTarget.dataset.action);
+        const idx = parseInt(e.currentTarget.dataset.actionIdx, 10);
+        this._startAction(idx);
       });
     });
 
@@ -1556,7 +1590,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.4.0 ',
+  '%c POOL-TIMER-CARD %c v2.5.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

@@ -94,9 +94,16 @@ schedule_entity: input_text.pool_timer_schedule
 mode_entity: input_select.pool_timer_mode
 state_entity: input_text.pool_timer_state
 
-# Timed-action durations in hours (optional)
-flocculant_hours: 2
-product_hours: 3
+# Timed quick actions (optional — these are the defaults if omitted)
+quick_actions:
+  - name: "Flocculant"
+    hours: 2
+    icon: "🌀"
+    after: "OFF"
+  - name: "Treatment"
+    hours: 3
+    icon: "🧪"
+    after: "Auto"
 
 # Presets (optional — these are the defaults if omitted)
 presets:
@@ -118,8 +125,9 @@ presets:
 | `schedule_entity` | string | ❌ | `input_text.pool_timer_schedule` | Helper storing the 48-segment schedule |
 | `mode_entity` | string | ❌ | `input_select.pool_timer_mode` | Helper storing the operation mode |
 | `state_entity` | string | ❌ | `input_text.pool_timer_state` | Helper storing preset + running action |
-| `flocculant_hours` | number | ❌ | `2` | Hours the pump circulates for the flocculant action |
-| `product_hours` | number | ❌ | `3` | Hours the pump runs for the treatment action |
+| `quick_actions` | list | ❌ | Flocculant, Treatment | Array of timed actions with `name`, `hours`, `icon`, `after` |
+| `flocculant_hours` | number | ❌ | `2` | (Legacy) Hours for flocculant action |
+| `product_hours` | number | ❌ | `3` | (Legacy) Hours for treatment action |
 | `presets` | list | ❌ | Verano / Invierno | Named schedules; each has `name` + `schedule` ranges |
 | `schedule` | list | ❌ | — | One-time default schedule (used only when the schedule helper is empty) |
 
@@ -155,28 +163,54 @@ and editing does not modify the original preset definition.
 
 ## Quick Actions
 
-These temporary actions **override** the schedule while active and are stored in
-`state_entity`, so they survive a dashboard reload.
+Fully configurable timed actions that **override** the schedule while active and
+are stored in `state_entity`, so they survive a dashboard reload.
 
-### 🌀 Flocculant
+### Configuration
 
-1. Pump runs continuously for `flocculant_hours` (default 2h) to disperse the floc.
-2. When the time is up the card **locks the pump OFF** (a *settling* state) so the
-   coagulated dirt sinks to the bottom — the pump will **not** turn on again.
-3. Vacuum the bottom, then press **"Bottom cleaned — resume"** on the card. It
-   returns to whatever mode was active before.
+Define as many actions as you need:
 
-### 🧪 Treatment (shock / product)
+```yaml
+quick_actions:
+  - name: "Flocculant"
+    hours: 2
+    icon: "🌀"
+    after: "OFF"              # Lock pump OFF until manually resumed
+  - name: "Treatment"
+    hours: 3
+    icon: "🧪"
+    after: "Auto"             # Return to Auto mode after
+  - name: "Filtrado"
+    hours: 1
+    icon: "🔄"
+    after: "Verano"           # Return to the "Verano" preset
+```
 
-1. Pump runs continuously for `product_hours` (default 3h) to mix the product.
-2. When the time is up it **automatically returns** to the previous mode (e.g. Auto
-   with the active preset).
+**Parameters:**
+- `name` — action label (e.g. "Flocculant", "Shock")
+- `hours` — duration in hours
+- `icon` — emoji for the button (optional)
+- `after` — what happens when the action finishes:
+  - `"OFF"` — lock the pump OFF (settling state) until user resumes
+  - `"Auto"` — return to Auto mode with the current schedule
+  - preset name (e.g. `"Verano"`) — load that preset
 
-You can cancel either action early with the **Cancel** button on its banner.
+**Legacy format** (still works):
+```yaml
+flocculant_hours: 2
+product_hours: 3
+```
+
+### Action flow
+
+1. Tap an action button → pump runs for the configured hours.
+2. Timer counts down on the card.
+3. When time expires → applies the `after` behavior.
+4. You can cancel with the **Cancel** button anytime.
 
 > ⏱️ **Reliability note:** the countdown is evaluated by the card itself, so the
 > automatic transition only fires while a dashboard with this card is open in a
-> browser somewhere (e.g. a wall tablet). The state is persisted, so when you open
+> browser somewhere (e.g. a wall tablet). The state is persists, so when you open
 > the dashboard again it resumes/expires correctly. For fully unattended timing
 > (browser closed), enforce it with the optional automation below.
 
