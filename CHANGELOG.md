@@ -7,9 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [2.8.1] - 2026-06-10
 
 ### Fixed
-- **Blueprint trigger syntax**: changed `minutes: "/1"` to `minutes: "*/1"` (Home
-  Assistant uses standard cron format, not slash notation). The automation was not
-  firing at all before this fix.
+- **Blueprint trigger syntax**: changed from `minutes: "/1"` to `seconds: 0`. Home
+  Assistant's `time_pattern` doesn't support `*/N` notation; use `seconds: 0` to
+  trigger at the start of each minute. The automation was not firing at all
+  before this fix.
 
 ## [2.8.0] - 2026-06-10
 

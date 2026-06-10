@@ -48,9 +48,9 @@ mode: single
 max_exceeded: silent
 
 trigger:
-  # Re-evaluate every minute…
+  # Re-evaluate every minute (at second 0 of each minute)…
   - platform: time_pattern
-    minutes: "*/1"
+    seconds: 0
   # …and right after a restart so the pump is corrected immediately on boot.
   - platform: homeassistant
     event: start
