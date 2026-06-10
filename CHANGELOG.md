@@ -4,6 +4,15 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.0] - 2026-06-10
+
+### Added
+- **Visual configuration editor**: no more YAML needed — add/edit/delete
+  quick actions and presets using a graphical UI directly in Home Assistant.
+- Action editor fields: name, hours, icon, and "after" behavior.
+- Preset editor: enter times as "08:00-13:00, 16:00-20:00" or edit individually.
+- All helpers can be configured visually.
+
 ## [2.5.0] - 2026-06-10
 
 ### Changed
@@ -118,6 +127,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.6.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.0
 [2.5.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.5.0
 [2.4.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.4.0
 [2.3.1]: https://github.com/serweck/pool-timer-card/releases/tag/v2.3.1
