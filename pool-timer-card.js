@@ -175,8 +175,12 @@ const DEFAULT_QUICK_ACTIONS = [
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Helper: polar→cartesian                                            */
+/*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
+function num(v, def) {
+  return Number(v) > 0 ? Number(v) : def;
+}
+
 function polarToXY(cx, cy, r, angleDeg) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
@@ -247,7 +251,6 @@ class PoolTimerCard extends HTMLElement {
     if (!config.entity) {
       throw new Error('Please define an entity (switch.*)');
     }
-    const num = (v, def) => (Number(v) > 0 ? Number(v) : def);
     this._config = {
       name: '',
       ...config,
