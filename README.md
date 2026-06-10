@@ -214,6 +214,58 @@ product_hours: 3
 > the dashboard again it resumes/expires correctly. For fully unattended timing
 > (browser closed), enforce it with the optional automation below.
 
+## Corner Actions (Quick Toggles)
+
+Quick one-tap buttons positioned in any of the **4 corners** of the dial for instant
+control of auxiliary entities: lights, jacuzzi, pool robot, filtration, etc. No timer —
+they execute immediately.
+
+### Configuration
+
+Define corner actions:
+
+```yaml
+corner_actions:
+  - name: "Jacuzzi"
+    icon: "🛁"
+    position: "top-left"          # tl, tr, bl, br (or full names: top-left, etc.)
+    service: "switch"             # HA service domain
+    entity_id: "switch.jacuzzi"   # Entity to control
+    action: "toggle"              # toggle, turn_on, turn_off
+  
+  - name: "Pool Lights"
+    icon: "💡"
+    position: "top-right"
+    service: "light"
+    entity_id: "light.pool_lights"
+    action: "toggle"
+  
+  - name: "Pool Robot"
+    icon: "🤖"
+    position: "bottom-left"
+    service: "switch"
+    entity_id: "switch.pool_robot"
+    action: "turn_on"
+```
+
+**Parameters:**
+- `name` — button label / tooltip (required)
+- `icon` — emoji for the button (required)
+- `position` — corner position (required): `"tl"` / `"top-left"`, `"tr"` / `"top-right"`, `"bl"` / `"bottom-left"`, `"br"` / `"bottom-right"`
+- `service` — HA service domain: `switch`, `light`, `automation`, `script`, etc.
+- `entity_id` — the entity to control (required)
+- `action` — what to do: `toggle`, `turn_on`, `turn_off`
+
+**Visual feedback:**
+- Default: icon only, subtle shadow
+- On hover: icon scales up, glow effect
+- Active (light is ON): icon color changes to green with glow
+
+**Limitations:**
+- Maximum 4 corner actions (one per corner)
+- Each position can have at most one button
+- Actions execute immediately (no timer, no state persistence)
+
 ## Retry Mechanism
 
 When the card sends a command to turn the pump ON or OFF, it verifies the actual

@@ -4,6 +4,21 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.7.2] - 2026-06-10
+
+### Added
+- **Comprehensive corner actions documentation** in README with full YAML examples
+  and parameter descriptions.
+
+### Changed
+- **Corner action button design**: now **icon-only** (no background border, no box).
+  Hover effect: icon scales up with subtle drop-shadow glow.
+- **Configurable corner positions**: each corner action now has a `position` field
+  (`tl`, `tr`, `bl`, `br` or full names `top-left`, etc.) so you can place buttons
+  in any corner, instead of auto-filling positions 0-3.
+- **Active state visual**: when a light is ON, the icon color changes to green with
+  a brighter glow (instead of the blue border styling).
+
 ## [2.7.1] - 2026-06-10
 
 ### Changed
@@ -201,6 +216,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.7.2]: https://github.com/serweck/pool-timer-card/releases/tag/v2.7.2
 [2.7.1]: https://github.com/serweck/pool-timer-card/releases/tag/v2.7.1
 [2.7.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.7.0
 [2.6.3]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.3

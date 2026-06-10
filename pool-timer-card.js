@@ -291,12 +291,20 @@ class PoolTimerCard extends HTMLElement {
   }
 
   _parseCornerActions(config) {
-    // Parse corner_actions: array of up to 4 quick-toggle actions (no timer)
-    // Each has: name, icon, service (service domain), entity_id, action (turn_on/turn_off/toggle)
+    // Parse corner_actions: array of quick-toggle actions (no timer)
+    // Each has: name, icon, position (tl/tr/bl/br or top-left/top-right/bottom-left/bottom-right),
+    // service (service domain), entity_id, action (turn_on/turn_off/toggle)
     if (!Array.isArray(config.corner_actions)) return [];
-    return config.corner_actions.slice(0, 4).map(a => ({
+    const positionMap = {
+      'tl': 'tl', 'top-left': 'tl',
+      'tr': 'tr', 'top-right': 'tr',
+      'bl': 'bl', 'bottom-left': 'bl',
+      'br': 'br', 'bottom-right': 'br',
+    };
+    return config.corner_actions.map(a => ({
       name: a.name || 'Action',
       icon: a.icon || '◆',
+      position: positionMap[a.position] || a.position || null,  // null = no position (skip)
       service: a.service || 'switch',     // e.g. 'switch', 'light'
       entity_id: a.entity_id || '',
       action: a.action || 'toggle',       // turn_on, turn_off, toggle
@@ -1147,39 +1155,34 @@ class PoolTimerCard extends HTMLElement {
         }
         .corner-btn {
           position: absolute;
-          width: 48px;
-          height: 48px;
-          border-radius: 8px;
-          border: 2px solid rgba(74,144,217,0.4);
-          background: rgba(255,255,255,0.08);
+          width: 44px;
+          height: 44px;
+          border: none;
+          background: none;
           color: ${COLORS.textPrimary};
-          font-size: 20px;
+          font-size: 28px;
           cursor: pointer;
           pointer-events: all;
           display: flex;
           align-items: center;
           justify-content: center;
           transition: all 0.2s ease;
-          backdrop-filter: blur(8px);
+          padding: 0;
+          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
         }
         .corner-btn:hover {
-          border-color: rgba(74,144,217,0.8);
-          background: rgba(74,144,217,0.15);
-          transform: scale(1.08);
-          box-shadow: 0 0 12px rgba(74,144,217,0.3);
+          transform: scale(1.15);
+          filter: drop-shadow(0 2px 6px rgba(74,144,217,0.5));
         }
         .corner-btn:active {
-          transform: scale(0.92);
+          transform: scale(0.85);
         }
         .corner-btn--active {
-          border-color: ${COLORS.modeActive};
-          background: rgba(74,144,217,0.25);
-          box-shadow: 0 0 12px rgba(74,144,217,0.4);
-          color: white;
+          color: ${COLORS.ledOn};
+          filter: drop-shadow(0 0 8px ${COLORS.ledOn});
         }
         .corner-btn--active:hover {
-          background: rgba(74,144,217,0.35);
-          box-shadow: 0 0 16px rgba(74,144,217,0.5);
+          filter: drop-shadow(0 0 12px ${COLORS.ledOn});
         }
         .corner-tl { top: -8px; left: -8px; }
         .corner-tr { top: -8px; right: -8px; }
@@ -1504,10 +1507,11 @@ class PoolTimerCard extends HTMLElement {
             </svg>
             <div class="corner-actions">
               ${(this._config.corner_actions || []).map((action, idx) => {
-                const corners = ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'];
+                if (!action.position) return '';  // Skip actions without a position
+                const cornerClass = `corner-${action.position}`;
                 const isActive = this._isCornerActionActive(idx);
                 const activeClass = isActive ? 'corner-btn--active' : '';
-                return `<button class="corner-btn ${corners[idx]} ${activeClass}" data-corner-idx="${idx}" title="${action.name}">${action.icon}</button>`;
+                return `<button class="corner-btn ${cornerClass} ${activeClass}" data-corner-idx="${idx}" title="${action.name}">${action.icon}</button>`;
               }).join('')}
             </div>
           </div>
@@ -2006,7 +2010,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.7.1 ',
+  '%c POOL-TIMER-CARD %c v2.7.2 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
