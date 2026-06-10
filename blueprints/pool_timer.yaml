@@ -9,6 +9,11 @@ blueprint:
     keeps the pump on until its until timestamp, and the flocculant settling lock
     keeps it off until you resume. When a timed action expires it applies the stored
     after behavior (settle / clear) and updates the state helper.
+
+    NOTE: every computed variable is self-contained (it re-derives everything from
+    the four entity inputs in a single template scope). Variables that reference
+    OTHER computed variables fail to render on some Home Assistant versions and
+    silently abort the run - do not refactor them to share intermediate values.
   domain: automation
   source_url: https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml
   input:
@@ -55,42 +60,66 @@ trigger:
     event: start
 
 variables:
+  # Plain (non-templated) inputs only. Everything else is self-contained below.
   pump: !input pump_switch
   sched_e: !input schedule_helper
   mode_e: !input mode_helper
   state_e: !input state_helper
 
-  raw: "{{ states(state_e) }}"
-  st: "{{ raw | from_json if raw.startswith('{') else {} }}"
-  act: "{{ st.action if 'action' in st else none }}"
-  until: "{{ st.until | int(0) }}"
-  after: "{{ st.after if 'after' in st else 'Auto' }}"
-  preset: "{{ st.preset if 'preset' in st else none }}"
-  ret: "{{ st.ret if 'ret' in st else 'Auto' }}"
-
-  mode: "{{ states(mode_e) }}"
-  sched: "{{ states(sched_e) }}"
-  idx: "{{ now().hour * 2 + (1 if now().minute >= 30 else 0) }}"
-  now_ms: "{{ (now().timestamp() * 1000) | int }}"
-
-  running: "{{ (act is number) and (now_ms < until) }}"
-  expired: "{{ (act is number) and (now_ms >= until) }}"
-  to_settling: "{{ expired and after == 'OFF' }}"
-  to_clear: "{{ expired and after != 'OFF' }}"
-  settling: "{{ act == 'settling' or to_settling }}"
-
-  # Same priority order as the card: running action -> settling -> base mode/schedule.
+  # Desired pump state: running action -> settling -> base mode/schedule.
   desired: >
-    {% if running %}on
-    {% elif settling %}off
-    {% elif mode == 'Perm' %}on
-    {% elif mode == 'OFF' %}off
-    {% elif sched | length == 48 %}{{ 'on' if sched[idx] == '1' else 'off' }}
-    {% else %}off{% endif %}
+    {% set raw = states(state_e) %}
+    {% set st = raw | from_json if raw.startswith('{') else {} %}
+    {% set act = st.action if 'action' in st else none %}
+    {% set until = st.until | int(0) %}
+    {% set after = st.after if 'after' in st else 'Auto' %}
+    {% set mode = states(mode_e) %}
+    {% set sched = states(sched_e) %}
+    {% set idx = now().hour * 2 + (1 if now().minute >= 30 else 0) %}
+    {% set now_ms = (now().timestamp() * 1000) | int %}
+    {% set running = (act is number) and (now_ms < until) %}
+    {% set expired = (act is number) and (now_ms >= until) %}
+    {% set settling = (act == 'settling') or (expired and after == 'OFF') %}
+    {{ 'on' if running else ('off' if settling else ('on' if mode == 'Perm' else ('off' if mode == 'OFF' else ('on' if (sched | length == 48 and sched[idx] == '1') else 'off')))) }}
+
+  # A timed action just expired and should lock OFF (flocculant settling).
+  to_settling: >
+    {% set raw = states(state_e) %}
+    {% set st = raw | from_json if raw.startswith('{') else {} %}
+    {% set act = st.action if 'action' in st else none %}
+    {% set until = st.until | int(0) %}
+    {% set after = st.after if 'after' in st else 'Auto' %}
+    {% set now_ms = (now().timestamp() * 1000) | int %}
+    {{ (act is number) and (now_ms >= until) and (after == 'OFF') }}
+
+  # A timed action just expired and should clear/return (treatment).
+  to_clear: >
+    {% set raw = states(state_e) %}
+    {% set st = raw | from_json if raw.startswith('{') else {} %}
+    {% set act = st.action if 'action' in st else none %}
+    {% set until = st.until | int(0) %}
+    {% set after = st.after if 'after' in st else 'Auto' %}
+    {% set now_ms = (now().timestamp() * 1000) | int %}
+    {{ (act is number) and (now_ms >= until) and (after != 'OFF') }}
+
+  # New JSON when transitioning to settling.
+  new_state_settling: >
+    {% set raw = states(state_e) %}
+    {% set st = raw | from_json if raw.startswith('{') else {} %}
+    {{ {'preset': st.preset if 'preset' in st else none, 'action': 'settling',
+        'until': 0, 'ret': st.ret if 'ret' in st else 'Auto', 'after': 'OFF'} | to_json }}
+
+  # New JSON when clearing/returning after a treatment.
+  new_state_clear: >
+    {% set raw = states(state_e) %}
+    {% set st = raw | from_json if raw.startswith('{') else {} %}
+    {% set after = st.after if 'after' in st else 'Auto' %}
+    {% set preset = st.preset if 'preset' in st else none %}
+    {{ {'preset': (after if after != 'Auto' else preset), 'action': none,
+        'until': 0, 'ret': st.ret if 'ret' in st else 'Auto', 'after': 'Auto'} | to_json }}
 
 action:
-  # 1) Persist any just-expired timed-action transition back into the state helper,
-  #    so the card reflects it on next load and we don't re-trigger every minute.
+  # 1) Persist any just-expired timed-action transition back into the state helper.
   - choose:
       - conditions: "{{ to_settling }}"
         sequence:
@@ -98,18 +127,14 @@ action:
             target:
               entity_id: !input state_helper
             data:
-              value: >
-                {{ {'preset': preset, 'action': 'settling', 'until': 0,
-                    'ret': ret, 'after': 'OFF'} | to_json }}
+              value: "{{ new_state_settling }}"
       - conditions: "{{ to_clear }}"
         sequence:
           - service: input_text.set_value
             target:
               entity_id: !input state_helper
             data:
-              value: >
-                {{ {'preset': (after if after != 'Auto' else preset),
-                    'action': none, 'until': 0, 'ret': ret, 'after': 'Auto'} | to_json }}
+              value: "{{ new_state_clear }}"
 
   # 2) Enforce the pump state (idempotent - only acts when it differs).
   - choose:

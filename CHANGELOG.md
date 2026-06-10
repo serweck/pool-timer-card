@@ -4,6 +4,19 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.3] - 2026-06-10
+
+### Fixed
+- **Blueprint silently aborted on some HA versions**: the `variables:` block had
+  templated variables referencing other templated variables (e.g. `st` used `raw`),
+  which fails to render on some Home Assistant versions and aborts the run before any
+  action — looking exactly like "the trigger never fires". Rewrote every computed
+  variable to be **self-contained** (each re-derives from the four entity inputs in a
+  single template scope, referencing no other computed variable).
+- **Blueprint `mode`**: `single` + `max_exceeded: silent` could silently drop every
+  minute tick while a prior (e.g. hung switch call) run was still active. Changed to
+  `mode: restart`.
+
 ## [2.8.2] - 2026-06-10
 
 ### Fixed
