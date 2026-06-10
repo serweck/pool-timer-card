@@ -1772,14 +1772,14 @@ class PoolTimerCardEditor extends HTMLElement {
       });
     });
 
-    // Quick Actions - delete
-    root.querySelectorAll('.action-name').forEach(input => {
-      const deleteBtn = input.parentElement.querySelector('.btn-delete');
-      if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => {
-          const idx = parseInt(deleteBtn.dataset.idx, 10);
+    // Quick Actions - delete (find button by closest list-item)
+    root.querySelectorAll('.list-item .btn-delete').forEach((btn, idx) => {
+      if (btn.parentElement.querySelector('.action-name')) {  // Only for action items, not presets
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const actionIdx = parseInt(btn.dataset.idx, 10);
           const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
-          actions.splice(idx, 1);
+          actions.splice(actionIdx, 1);
           this._updateConfig({ quick_actions: actions });
         });
       }
@@ -1815,16 +1815,14 @@ class PoolTimerCardEditor extends HTMLElement {
     });
 
     // Presets - delete
-    root.querySelectorAll('.preset-name').forEach(input => {
-      const deleteBtn = input.parentElement.querySelector('.btn-delete');
-      if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => {
-          const idx = parseInt(deleteBtn.dataset.idx, 10);
-          const presets = [...(this._config.presets || DEFAULT_PRESETS)];
-          presets.splice(idx, 1);
-          this._updateConfig({ presets });
-        });
-      }
+    root.querySelectorAll('#presets-list .btn-delete').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const idx = parseInt(btn.dataset.idx, 10);
+        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+        presets.splice(idx, 1);
+        this._updateConfig({ presets });
+      });
     });
 
     // Presets - add
