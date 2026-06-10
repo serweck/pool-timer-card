@@ -1505,75 +1505,302 @@ class PoolTimerCardEditor extends HTMLElement {
     this._hass = hass;
   }
 
+  _updateConfig(updates) {
+    this._config = { ...this._config, ...updates };
+    const event = new CustomEvent('config-changed', {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true,
+    });
+    this.dispatchEvent(event);
+    this._render();
+  }
+
+  _renderQuickActions() {
+    const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
+    return actions.map((action, idx) => `
+      <div class="list-item">
+        <input type="text" class="action-name" data-idx="${idx}" value="${action.name}"
+          placeholder="Flocculant" />
+        <input type="number" class="action-hours" data-idx="${idx}" value="${action.hours}"
+          min="0.5" step="0.5" placeholder="2" />
+        <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
+          placeholder="🌀" maxlength="3" />
+        <select class="action-after" data-idx="${idx}">
+          <option value="OFF" ${action.after === 'OFF' ? 'selected' : ''}>Lock OFF</option>
+          <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto mode</option>
+          ${(this._config.presets || DEFAULT_PRESETS).map(p =>
+            `<option value="${p.name}" ${action.after === p.name ? 'selected' : ''}>${p.name}</option>`
+          ).join('')}
+        </select>
+        <button class="btn-delete" data-idx="${idx}">✕</button>
+      </div>
+    `).join('');
+  }
+
+  _renderPresets() {
+    const presets = this._config.presets || DEFAULT_PRESETS;
+    return presets.map((preset, idx) => `
+      <div class="list-item">
+        <input type="text" class="preset-name" data-idx="${idx}" value="${preset.name}"
+          placeholder="Verano" />
+        <input type="text" class="preset-schedule" data-idx="${idx}"
+          value="${preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : ''}"
+          placeholder="08:00-13:00, 16:00-20:00" />
+        <button class="btn-delete" data-idx="${idx}">✕</button>
+      </div>
+    `).join('');
+  }
+
   _render() {
     const lang = this._hass?.language || 'en';
+    const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
+    const presets = this._config.presets || DEFAULT_PRESETS;
+
     this.shadowRoot.innerHTML = `
       <style>
         .editor {
           padding: 16px;
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 16px;
+          font-family: Roboto, sans-serif;
+        }
+        .section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .section-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--primary-text-color, #e5e5e7);
+          margin-bottom: 4px;
         }
         label {
           display: flex;
           flex-direction: column;
           gap: 4px;
-          font-size: 14px;
-          color: var(--primary-text-color, #e5e5e7);
+          font-size: 12px;
+          color: var(--secondary-text-color, #8e8e93);
         }
-        input {
+        input, select {
           padding: 8px 12px;
           border: 1px solid #3a3a3c;
-          border-radius: 8px;
+          border-radius: 6px;
           background: #2c2c2e;
           color: #e5e5e7;
-          font-size: 14px;
+          font-size: 13px;
         }
-        input:focus {
+        input:focus, select:focus {
           outline: none;
           border-color: #4A90D9;
+          box-shadow: 0 0 0 2px rgba(74,144,217,0.2);
+        }
+        .list-item {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          padding: 10px;
+          background: #3a3a3c;
+          border-radius: 6px;
+          border: 1px solid #4a4a4c;
+        }
+        .list-item input {
+          flex: 1;
+          min-width: 0;
+        }
+        .list-item input[class="action-icon"],
+        .list-item input[class="action-hours"] {
+          flex: 0 0 auto;
+          min-width: 60px;
+        }
+        .list-item select {
+          flex: 0 0 120px;
+        }
+        .btn-delete {
+          flex: 0 0 32px;
+          padding: 6px;
+          background: #FF3B30;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+          transition: opacity 0.2s;
+        }
+        .btn-delete:hover {
+          opacity: 0.8;
+        }
+        .btn-add {
+          padding: 8px 14px;
+          background: #4A90D9;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 13px;
+          align-self: flex-start;
+          transition: opacity 0.2s;
+        }
+        .btn-add:hover {
+          opacity: 0.9;
         }
       </style>
       <div class="editor">
-        <label>
-          ${t('editor_entity', lang)}
-          <input type="text" id="entity" value="${this._config.entity || ''}"
-            placeholder="switch.pool_pump" />
-        </label>
-        <label>
-          ${t('editor_name', lang)}
-          <input type="text" id="name" value="${this._config.name || ''}"
-            placeholder="Pool Timer" />
-        </label>
-        <label>
-          ${t('editor_schedule', lang)}
-          <input type="text" id="schedule_entity"
-            value="${this._config.schedule_entity || 'input_text.pool_timer_schedule'}" />
-        </label>
-        <label>
-          ${t('editor_mode', lang)}
-          <input type="text" id="mode_entity"
-            value="${this._config.mode_entity || 'input_select.pool_timer_mode'}" />
-        </label>
+        <!-- Basic Settings -->
+        <div class="section">
+          <div class="section-title">Basic</div>
+          <label>
+            ${t('editor_entity', lang)}
+            <input type="text" id="entity" value="${this._config.entity || ''}"
+              placeholder="switch.pool_pump" />
+          </label>
+          <label>
+            ${t('editor_name', lang)}
+            <input type="text" id="name" value="${this._config.name || ''}"
+              placeholder="Pool Timer" />
+          </label>
+        </div>
+
+        <!-- Helpers -->
+        <div class="section">
+          <div class="section-title">Helpers</div>
+          <label>
+            Schedule (input_text)
+            <input type="text" id="schedule_entity"
+              value="${this._config.schedule_entity || 'input_text.pool_timer_schedule'}" />
+          </label>
+          <label>
+            Mode (input_select)
+            <input type="text" id="mode_entity"
+              value="${this._config.mode_entity || 'input_select.pool_timer_mode'}" />
+          </label>
+          <label>
+            State (input_text)
+            <input type="text" id="state_entity"
+              value="${this._config.state_entity || 'input_text.pool_timer_state'}" />
+          </label>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="section">
+          <div class="section-title">Quick Actions</div>
+          <div id="actions-list">
+            ${this._renderQuickActions()}
+          </div>
+          <button class="btn-add" id="btn-add-action">+ Add Action</button>
+        </div>
+
+        <!-- Presets -->
+        <div class="section">
+          <div class="section-title">Presets</div>
+          <div id="presets-list">
+            ${this._renderPresets()}
+          </div>
+          <button class="btn-add" id="btn-add-preset">+ Add Preset</button>
+        </div>
       </div>
     `;
 
-    // Bind change events
-    ['entity', 'name', 'schedule_entity', 'mode_entity'].forEach(field => {
-      const input = this.shadowRoot.getElementById(field);
+    this._bindEditorEvents();
+  }
+
+  _bindEditorEvents() {
+    const root = this.shadowRoot;
+
+    // Basic fields
+    ['entity', 'name', 'schedule_entity', 'mode_entity', 'state_entity'].forEach(field => {
+      const input = root.getElementById(field);
       if (input) {
         input.addEventListener('change', (e) => {
-          this._config = { ...this._config, [field]: e.target.value };
-          const event = new CustomEvent('config-changed', {
-            detail: { config: this._config },
-            bubbles: true,
-            composed: true,
-          });
-          this.dispatchEvent(event);
+          const updates = { [field]: e.target.value };
+          this._updateConfig(updates);
         });
       }
     });
+
+    // Quick Actions - edit
+    root.querySelectorAll('.action-name, .action-hours, .action-icon, .action-after').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+        const fieldMap = { 'action-name': 'name', 'action-hours': 'hours', 'action-icon': 'icon', 'action-after': 'after' };
+        const field = fieldMap[e.target.className];
+        if (field === 'hours') {
+          actions[idx][field] = parseFloat(e.target.value) || 2;
+        } else {
+          actions[idx][field] = e.target.value;
+        }
+        this._updateConfig({ quick_actions: actions });
+      });
+    });
+
+    // Quick Actions - delete
+    root.querySelectorAll('.action-name').forEach(input => {
+      const deleteBtn = input.parentElement.querySelector('.btn-delete');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+          const idx = parseInt(deleteBtn.dataset.idx, 10);
+          const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+          actions.splice(idx, 1);
+          this._updateConfig({ quick_actions: actions });
+        });
+      }
+    });
+
+    // Quick Actions - add
+    const addActionBtn = root.getElementById('btn-add-action');
+    if (addActionBtn) {
+      addActionBtn.addEventListener('click', () => {
+        const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+        actions.push({ name: 'New Action', hours: 2, icon: '⏱️', after: 'Auto' });
+        this._updateConfig({ quick_actions: actions });
+      });
+    }
+
+    // Presets - edit
+    root.querySelectorAll('.preset-name, .preset-schedule').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+        if (e.target.className === 'preset-name') {
+          presets[idx].name = e.target.value;
+        } else {
+          // Parse "08:00-13:00, 16:00-20:00" into schedule
+          const ranges = e.target.value.split(',').map(r => {
+            const [start, end] = r.trim().split('-');
+            return { start: start?.trim() || '', end: end?.trim() || '' };
+          }).filter(r => r.start && r.end);
+          presets[idx].schedule = ranges;
+        }
+        this._updateConfig({ presets });
+      });
+    });
+
+    // Presets - delete
+    root.querySelectorAll('.preset-name').forEach(input => {
+      const deleteBtn = input.parentElement.querySelector('.btn-delete');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+          const idx = parseInt(deleteBtn.dataset.idx, 10);
+          const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+          presets.splice(idx, 1);
+          this._updateConfig({ presets });
+        });
+      }
+    });
+
+    // Presets - add
+    const addPresetBtn = root.getElementById('btn-add-preset');
+    if (addPresetBtn) {
+      addPresetBtn.addEventListener('click', () => {
+        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+        presets.push({ name: 'New Preset', schedule: [{ start: '10:00', end: '16:00' }] });
+        this._updateConfig({ presets });
+      });
+    }
   }
 }
 
