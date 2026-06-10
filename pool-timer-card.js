@@ -424,7 +424,9 @@ class PoolTimerCard extends HTMLElement {
     this._clockInterval = setInterval(() => { if (!this._dragging) this._render(); }, 30000);
     // Evaluate schedule every 60s (and refresh UI for action countdowns/transitions)
     this._scheduleInterval = setInterval(() => {
-      this._evaluateSchedule();
+      // The pump is driven by the Home Assistant blueprint (browser-independent),
+      // so the card no longer drives it on a timer — it just refreshes the UI.
+      // Explicit user actions still act immediately for a snappy response.
       if (!this._dragging) this._render();
     }, 60000);
     this._render();
@@ -506,6 +508,18 @@ class PoolTimerCard extends HTMLElement {
     return segs;
   }
 
+  // The "after" behavior of the currently running timed action, or null when no
+  // numbered action is running. Persisted so a server-side automation can apply
+  // the post-action transition (settle / return) WITHOUT knowing the card config
+  // — the state helper stays the single, self-describing source of truth.
+  _currentAfter() {
+    if (typeof this._action === 'number') {
+      const a = this._config.quick_actions?.[this._action];
+      return a ? (a.after || 'Auto') : null;
+    }
+    return null;
+  }
+
   // Persist the active preset + any running timed action as JSON in a helper.
   _saveState() {
     if (!this._hass) return;
@@ -516,6 +530,8 @@ class PoolTimerCard extends HTMLElement {
       action: (this._action === null || this._action === undefined) ? null : this._action,
       until: this._actionUntil || 0,
       ret: this._returnMode || 'Auto',
+      // Lets a server-side blueprint enforce timing with the browser closed.
+      after: this._currentAfter(),
     });
     this._hass.callService('input_text', 'set_value', {
       entity_id: this._config.state_entity,
@@ -2010,7 +2026,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.7.2 ',
+  '%c POOL-TIMER-CARD %c v2.8.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

@@ -4,6 +4,30 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.0] - 2026-06-10
+
+### Added
+- **Browser-independent operation** via a Home Assistant **blueprint**
+  (`blueprints/pool_timer.yaml`). It runs server-side every minute (and on HA
+  restart) and reproduces the card's full state machine (Auto schedule, Perm/OFF,
+  running timed actions, the flocculant "settling" lock, and post-action
+  transitions), so the pump is driven 24/7 even with no browser open. Imported with
+  one click — entities are picked from dropdowns, no YAML editing.
+- The state helper JSON now includes an **`after`** field so the server can apply a
+  timed action's post-behavior without knowing the card config — the helper stays a
+  self-describing single source of truth.
+
+### Changed
+- **The blueprint is now required**: the card no longer drives the pump on its 60s
+  timer — it delegates pump control to the blueprint and acts as a pure UI. Explicit
+  user taps still drive the switch immediately for a snappy response.
+- README: replaced the partial "end treatment on time" automation with a complete
+  **"Required: install the blueprint"** section (import badge + setup steps).
+
+### Migration
+- After updating, **import the blueprint and create the automation** (see README).
+  Without it, the schedule will not be enforced while no browser is open.
+
 ## [2.7.2] - 2026-06-10
 
 ### Added

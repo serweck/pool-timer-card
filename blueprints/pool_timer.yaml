@@ -1,0 +1,126 @@
+blueprint:
+  name: Pool Timer Card — Server Enforcement
+  description: >
+    Drives the pool pump from the same helpers the Pool Timer Card writes, so the
+    schedule keeps working even when no dashboard / browser is open.
+
+    It mirrors the card's own decision logic (`_computeDesiredState`): Auto follows
+    the 48-slot schedule, Perm = always on, OFF = always off, a running timed action
+    keeps the pump on until its `until` timestamp, and the flocculant "settling" lock
+    keeps it off until you resume. When a timed action expires it applies the stored
+    `after` behavior (settle / clear) and updates the state helper.
+
+    Pair it with `server_managed: true` in the card config so the card stops driving
+    the pump on its own timer and lets this automation own it.
+  domain: automation
+  source_url: https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml
+  input:
+    pump_switch:
+      name: Pump switch
+      description: The switch entity that powers the pump (card `entity`).
+      selector:
+        entity:
+          filter:
+            - domain: switch
+    schedule_helper:
+      name: Schedule helper
+      description: The input_text holding the 48-char schedule (card `schedule_entity`).
+      selector:
+        entity:
+          filter:
+            - domain: input_text
+    mode_helper:
+      name: Mode helper
+      description: The input_select with Auto / Perm / OFF (card `mode_entity`).
+      selector:
+        entity:
+          filter:
+            - domain: input_select
+    state_helper:
+      name: State helper
+      description: The input_text holding the JSON preset/action state (card `state_entity`).
+      selector:
+        entity:
+          filter:
+            - domain: input_text
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  # Re-evaluate every minute…
+  - platform: time_pattern
+    minutes: "/1"
+  # …and right after a restart so the pump is corrected immediately on boot.
+  - platform: homeassistant
+    event: start
+
+variables:
+  pump: !input pump_switch
+  sched_e: !input schedule_helper
+  mode_e: !input mode_helper
+  state_e: !input state_helper
+
+  raw: "{{ states(state_e) }}"
+  st: "{{ raw | from_json if raw.startswith('{') else {} }}"
+  act: "{{ st.action if 'action' in st else none }}"
+  until: "{{ st.until | int(0) }}"
+  after: "{{ st.after if 'after' in st else 'Auto' }}"
+  preset: "{{ st.preset if 'preset' in st else none }}"
+  ret: "{{ st.ret if 'ret' in st else 'Auto' }}"
+
+  mode: "{{ states(mode_e) }}"
+  sched: "{{ states(sched_e) }}"
+  idx: "{{ now().hour * 2 + (1 if now().minute >= 30 else 0) }}"
+  now_ms: "{{ (now().timestamp() * 1000) | int }}"
+
+  running: "{{ (act is number) and (now_ms < until) }}"
+  expired: "{{ (act is number) and (now_ms >= until) }}"
+  to_settling: "{{ expired and after == 'OFF' }}"     # flocculant finished → lock off
+  to_clear: "{{ expired and after != 'OFF' }}"        # treatment finished → back to base
+  settling: "{{ act == 'settling' or to_settling }}"
+
+  # Same priority order as the card: running action → settling → base mode/schedule.
+  desired: >
+    {% if running %}on
+    {% elif settling %}off
+    {% elif mode == 'Perm' %}on
+    {% elif mode == 'OFF' %}off
+    {% elif sched | length == 48 %}{{ 'on' if sched[idx] == '1' else 'off' }}
+    {% else %}off{% endif %}
+
+action:
+  # 1) Persist any just-expired timed-action transition back into the state helper,
+  #    so the card reflects it on next load and we don't re-trigger every minute.
+  - choose:
+      - conditions: "{{ to_settling }}"
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input state_helper
+            data:
+              value: >
+                {{ {'preset': preset, 'action': 'settling', 'until': 0,
+                    'ret': ret, 'after': 'OFF'} | to_json }}
+      - conditions: "{{ to_clear }}"
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input state_helper
+            data:
+              value: >
+                {{ {'preset': (after if after != 'Auto' else preset),
+                    'action': none, 'until': 0, 'ret': ret, 'after': 'Auto'} | to_json }}
+
+  # 2) Enforce the pump state (idempotent — only acts when it differs).
+  - choose:
+      - conditions: "{{ desired | trim == 'on' and not is_state(pump, 'on') }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input pump_switch
+      - conditions: "{{ desired | trim == 'off' and not is_state(pump, 'off') }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input pump_switch

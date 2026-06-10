@@ -208,11 +208,10 @@ product_hours: 3
 3. When time expires → applies the `after` behavior.
 4. You can cancel with the **Cancel** button anytime.
 
-> ⏱️ **Reliability note:** the countdown is evaluated by the card itself, so the
-> automatic transition only fires while a dashboard with this card is open in a
-> browser somewhere (e.g. a wall tablet). The state is persists, so when you open
-> the dashboard again it resumes/expires correctly. For fully unattended timing
-> (browser closed), enforce it with the optional automation below.
+> ⏱️ **Reliability note:** the pump is driven server-side by the blueprint, so timed
+> actions transition on time **even with no browser open**. Make sure you completed
+> [Required: install the blueprint](#required-install-the-blueprint-browser-independent-operation)
+> — it is part of the setup, not optional.
 
 ## Corner Actions (Quick Toggles)
 
@@ -296,34 +295,37 @@ automation:
           option: "Perm"
 ```
 
-### Optional: enforce a timed action server-side (browser-independent)
+## Required: install the blueprint (browser-independent operation)
 
-If you want the treatment action to end exactly on time even with no dashboard
-open, add an automation that watches the `until` timestamp in the state helper:
+The card is the **UI**; the actual pump control runs **server-side** in Home
+Assistant via the included **blueprint**. This is what makes the schedule work
+**24/7 even with every browser/tab closed** — without it, the card only reflects
+state and acts on your taps, but nothing enforces the schedule unattended.
 
-```yaml
-automation:
-  - alias: "Pool: end treatment on time"
-    trigger:
-      - platform: time_pattern
-        minutes: "/1"
-    condition:
-      - condition: template
-        value_template: >
-          {% set s = states('input_text.pool_timer_state') %}
-          {{ s.startswith('{') and (s | from_json).action == 'product'
-             and (s | from_json).until | int(0) < now().timestamp() * 1000 }}
-    action:
-      # Return to the stored mode and clear the action
-      - service: input_select.select_option
-        target: { entity_id: input_select.pool_timer_mode }
-        data:
-          option: "{{ (states('input_text.pool_timer_state') | from_json).ret }}"
-      - service: input_text.set_value
-        target: { entity_id: input_text.pool_timer_state }
-        data:
-          value: "{}"
+> ⚠️ **The blueprint is part of the setup, not optional.** The card no longer drives
+> the pump on a timer; it delegates that to the blueprint, which reads the same three
+> helpers and reproduces the card's exact logic (Auto schedule, Perm/OFF, running
+> actions, the flocculant "settling" lock, and the post-action transition).
+
+### 1. Import the blueprint
+
+[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fserweck%2Fpool-timer-card%2Fblob%2Fmain%2Fblueprints%2Fpool_timer.yaml)
+
+…or in HA: **Settings → Automations & scenes → Blueprints → Import blueprint**, and
+paste:
+
 ```
+https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml
+```
+
+### 2. Create an automation from it
+
+Pick the four entities in the dropdowns — the pump switch and the three helpers
+(`schedule`, `mode`, `state`). No YAML editing required.
+
+That's it. The card stays a pure UI and the blueprint owns the pump; explicit taps on
+the card still act **immediately** for a snappy response, and the blueprint reconciles
+the state every minute (and right after a Home Assistant restart).
 
 ## Language Support
 
