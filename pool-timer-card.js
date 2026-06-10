@@ -387,7 +387,7 @@ class PoolTimerCard extends HTMLElement {
     const schedMax = sched?.attributes?.max ?? '?';
     const hasState = this._hass?.states?.[this._config.state_entity] ? '1' : '0';
     const hasMode = this._hass?.states?.[this._config.mode_entity] ? '1' : '0';
-    return [
+    const parts = [
       pump,
       this._mode,
       (this._segments || []).map(s => (s ? '1' : '0')).join(''),
@@ -396,7 +396,12 @@ class PoolTimerCard extends HTMLElement {
       this._preset || '',
       this._retryState || '',
       schedMax, hasState, hasMode,
-    ].join('|');
+    ];
+    // Include corner action states so the card re-renders when a corner entity changes.
+    for (let i = 0; i < (this._config.corner_actions || []).length; i++) {
+      parts.push(this._isCornerActionActive(i) ? '1' : '0');
+    }
+    return parts.join('|');
   }
 
   static getConfigElement() {
@@ -2026,7 +2031,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.8.1 ',
+  '%c POOL-TIMER-CARD %c v2.8.2 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

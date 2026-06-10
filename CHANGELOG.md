@@ -4,6 +4,13 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.2] - 2026-06-10
+
+### Fixed
+- **Corner action visual updates**: the render signature now includes corner action
+  states, so the card re-renders when a corner entity (e.g., a light) changes state
+  in Home Assistant. Before, you had to reload the page to see the glow update.
+
 ## [2.8.1] - 2026-06-10
 
 ### Fixed
