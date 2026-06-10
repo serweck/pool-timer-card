@@ -1,44 +1,41 @@
 blueprint:
-  name: Pool Timer Card — Server Enforcement
+  name: Pool Timer Card - Server Enforcement
   description: >
     Drives the pool pump from the same helpers the Pool Timer Card writes, so the
     schedule keeps working even when no dashboard / browser is open.
 
-    It mirrors the card's own decision logic (`_computeDesiredState`): Auto follows
+    It mirrors the card's own decision logic (_computeDesiredState): Auto follows
     the 48-slot schedule, Perm = always on, OFF = always off, a running timed action
-    keeps the pump on until its `until` timestamp, and the flocculant "settling" lock
+    keeps the pump on until its until timestamp, and the flocculant settling lock
     keeps it off until you resume. When a timed action expires it applies the stored
-    `after` behavior (settle / clear) and updates the state helper.
-
-    Pair it with `server_managed: true` in the card config so the card stops driving
-    the pump on its own timer and lets this automation own it.
+    after behavior (settle / clear) and updates the state helper.
   domain: automation
   source_url: https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml
   input:
     pump_switch:
       name: Pump switch
-      description: The switch entity that powers the pump (card `entity`).
+      description: The switch entity that powers the pump (card entity).
       selector:
         entity:
           filter:
             - domain: switch
     schedule_helper:
       name: Schedule helper
-      description: The input_text holding the 48-char schedule (card `schedule_entity`).
+      description: The input_text holding the 48-char schedule (card schedule_entity).
       selector:
         entity:
           filter:
             - domain: input_text
     mode_helper:
       name: Mode helper
-      description: The input_select with Auto / Perm / OFF (card `mode_entity`).
+      description: The input_select with Auto / Perm / OFF (card mode_entity).
       selector:
         entity:
           filter:
             - domain: input_select
     state_helper:
       name: State helper
-      description: The input_text holding the JSON preset/action state (card `state_entity`).
+      description: The input_text holding the JSON preset/action state (card state_entity).
       selector:
         entity:
           filter:
@@ -48,10 +45,10 @@ mode: single
 max_exceeded: silent
 
 trigger:
-  # Re-evaluate every minute…
+  # Re-evaluate every minute...
   - platform: time_pattern
     minutes: /1
-  # …and right after a restart so the pump is corrected immediately on boot.
+  # ...and right after a restart so the pump is corrected immediately on boot.
   - platform: homeassistant
     event: start
 
@@ -76,11 +73,11 @@ variables:
 
   running: "{{ (act is number) and (now_ms < until) }}"
   expired: "{{ (act is number) and (now_ms >= until) }}"
-  to_settling: "{{ expired and after == 'OFF' }}"     # flocculant finished → lock off
-  to_clear: "{{ expired and after != 'OFF' }}"        # treatment finished → back to base
+  to_settling: "{{ expired and after == 'OFF' }}"
+  to_clear: "{{ expired and after != 'OFF' }}"
   settling: "{{ act == 'settling' or to_settling }}"
 
-  # Same priority order as the card: running action → settling → base mode/schedule.
+  # Same priority order as the card: running action -> settling -> base mode/schedule.
   desired: >
     {% if running %}on
     {% elif settling %}off
@@ -112,7 +109,7 @@ action:
                 {{ {'preset': (after if after != 'Auto' else preset),
                     'action': none, 'until': 0, 'ret': ret, 'after': 'Auto'} | to_json }}
 
-  # 2) Enforce the pump state (idempotent — only acts when it differs).
+  # 2) Enforce the pump state (idempotent - only acts when it differs).
   - choose:
       - conditions: "{{ desired | trim == 'on' and not is_state(pump, 'on') }}"
         sequence:
