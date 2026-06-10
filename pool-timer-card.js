@@ -953,9 +953,10 @@ class PoolTimerCard extends HTMLElement {
     };
 
     const actionsHTML = hasActions
-      ? quickActions.map((action, idx) =>
-          `<button class="chip action-btn ${this._action === idx ? 'chip--warn-active' : ''}" data-action-idx="${idx}">${action.icon} ${action.name}</button>`
-        ).join('')
+      ? quickActions.map((action, idx) => {
+          const label = action.name ? `${action.icon} ${action.name}` : action.icon;
+          return `<button class="chip action-btn ${this._action === idx ? 'chip--warn-active' : ''}" data-action-idx="${idx}" title="${action.name || action.icon}">${label}</button>`;
+        }).join('')
       : '';
 
     /* ---- mode selector: dropdown if presets, buttons if not ---- */
