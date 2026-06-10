@@ -1,0 +1,21 @@
+blueprint:
+  name: TEST - Timer every minute
+  description: >
+    Minimal diagnostic blueprint. Fires every minute and creates a persistent
+    notification. No inputs, no variables, no switch calls - nothing that can hang.
+    If this fires every minute, the blueprint + time_pattern mechanism works.
+  domain: automation
+  source_url: https://github.com/serweck/pool-timer-card/blob/main/blueprints/_test_timer.yaml
+
+mode: restart
+
+trigger:
+  - platform: time_pattern
+    minutes: /1
+
+action:
+  - service: persistent_notification.create
+    data:
+      notification_id: blueprint_timer_test
+      title: Blueprint timer test
+      message: "Fired at {{ now().strftime('%H:%M:%S') }}"
