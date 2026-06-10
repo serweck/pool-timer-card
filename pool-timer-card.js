@@ -1519,31 +1519,31 @@ class PoolTimerCardEditor extends HTMLElement {
   _renderQuickActions() {
     const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
     const html = `
-      <div class="list-header">
-        <span class="col-name">Name</span>
-        <span class="col-hours">Hours</span>
-        <span class="col-after">After</span>
-        <span class="col-action"></span>
+      <div class="list-header action-header">
+        <span>Name</span>
+        <span>Hours</span>
+        <span>After</span>
+        <span></span>
       </div>
     `;
     return html + actions.map((action, idx) => `
-      <div class="list-item">
-        <div class="col-name">
+      <div class="list-item action-item">
+        <div style="display: flex; gap: 6px; align-items: center; min-width: 0;">
           <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
-            placeholder="🌀" maxlength="3" style="width: 40px; text-align: center;" />
+            placeholder="🌀" maxlength="3" style="width: 35px; padding: 4px 2px; text-align: center; flex-shrink: 0;" />
           <input type="text" class="action-name" data-idx="${idx}" value="${action.name}"
-            placeholder="Name" style="flex: 1;" />
+            placeholder="Name" style="flex: 1; min-width: 0;" />
         </div>
-        <input type="number" class="action-hours col-hours" data-idx="${idx}" value="${action.hours}"
-          min="0.5" step="0.5" placeholder="2" />
-        <select class="action-after col-after" data-idx="${idx}">
+        <input type="number" class="action-hours" data-idx="${idx}" value="${action.hours}"
+          min="0.5" step="0.5" placeholder="2" style="width: 60px;" />
+        <select class="action-after" data-idx="${idx}" style="min-width: 100px;">
           <option value="OFF" ${action.after === 'OFF' ? 'selected' : ''}>Lock OFF</option>
           <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto</option>
           ${(this._config.presets || DEFAULT_PRESETS).map(p =>
             `<option value="${p.name}" ${action.after === p.name ? 'selected' : ''}>${p.name}</option>`
           ).join('')}
         </select>
-        <button class="btn-delete" data-idx="${idx}">✕</button>
+        <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
       </div>
     `).join('');
   }
@@ -1616,7 +1616,6 @@ class PoolTimerCardEditor extends HTMLElement {
         }
         .list-header {
           display: grid;
-          grid-template-columns: 1fr 80px 140px 32px;
           gap: 8px;
           padding: 8px 10px;
           background: #4a4a4c;
@@ -1627,14 +1626,12 @@ class PoolTimerCardEditor extends HTMLElement {
           color: #8e8e93;
           align-items: center;
         }
-        .col-name { text-align: left; }
-        .col-hours { text-align: center; }
-        .col-after { text-align: center; }
-        .col-action { text-align: center; }
+        .action-header {
+          grid-template-columns: 1fr 60px 100px 32px;
+        }
 
         .list-item {
           display: grid;
-          grid-template-columns: 1fr 80px 140px 32px;
           gap: 8px;
           align-items: center;
           padding: 8px 10px;
@@ -1642,16 +1639,16 @@ class PoolTimerCardEditor extends HTMLElement {
           border-radius: 6px;
           border: 1px solid #4a4a4c;
         }
-        .list-item .col-name {
-          display: flex;
-          gap: 6px;
-          align-items: center;
+        .action-item {
+          grid-template-columns: 1fr 60px 100px 32px;
         }
         .list-item input {
           padding: 6px 8px;
+          font-size: 12px;
         }
         .list-item select {
           padding: 6px 8px;
+          font-size: 12px;
         }
         .btn-delete {
           flex: 0 0 32px;
@@ -1772,18 +1769,19 @@ class PoolTimerCardEditor extends HTMLElement {
       });
     });
 
-    // Quick Actions - delete (find button by closest list-item)
-    root.querySelectorAll('.list-item .btn-delete').forEach((btn, idx) => {
-      if (btn.parentElement.querySelector('.action-name')) {  // Only for action items, not presets
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          const actionIdx = parseInt(btn.dataset.idx, 10);
+    // Quick Actions - delete (use event delegation on container)
+    const actionsList = root.getElementById('actions-list');
+    if (actionsList) {
+      actionsList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-delete') && e.target.closest('.action-item')) {
+          e.stopPropagation();
+          const actionIdx = parseInt(e.target.dataset.idx, 10);
           const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
           actions.splice(actionIdx, 1);
           this._updateConfig({ quick_actions: actions });
-        });
-      }
-    });
+        }
+      }, true);  // Use capture phase
+    }
 
     // Quick Actions - add
     const addActionBtn = root.getElementById('btn-add-action');
@@ -1814,16 +1812,19 @@ class PoolTimerCardEditor extends HTMLElement {
       });
     });
 
-    // Presets - delete
-    root.querySelectorAll('#presets-list .btn-delete').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const idx = parseInt(btn.dataset.idx, 10);
-        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
-        presets.splice(idx, 1);
-        this._updateConfig({ presets });
-      });
-    });
+    // Presets - delete (use event delegation)
+    const presetsList = root.getElementById('presets-list');
+    if (presetsList) {
+      presetsList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-delete')) {
+          e.stopPropagation();
+          const idx = parseInt(e.target.dataset.idx, 10);
+          const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+          presets.splice(idx, 1);
+          this._updateConfig({ presets });
+        }
+      }, true);  // Use capture phase
+    }
 
     // Presets - add
     const addPresetBtn = root.getElementById('btn-add-preset');
