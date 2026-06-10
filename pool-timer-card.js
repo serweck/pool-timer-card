@@ -892,11 +892,18 @@ class PoolTimerCard extends HTMLElement {
 
     /* ---- presets, quick actions & action banner ---- */
     const presets = this._config.presets || [];
+    const hasPresets = presets.length > 0;
+    const flocHours = this._config.flocculant_hours || 0;
+    const prodHours = this._config.product_hours || 0;
+    const hasActions = flocHours > 0 || prodHours > 0;
+
     const presetActive = (name) =>
       (this._preset === name && this._mode === 'Auto' && !this._action) ? 'chip--active' : '';
-    const presetsHTML = presets.map(p =>
-      `<button class="chip preset-btn ${presetActive(p.name)}" data-preset="${p.name}">${p.name}</button>`
-    ).join('');
+    const presetsHTML = hasPresets
+      ? presets.map(p =>
+        `<button class="chip preset-btn ${presetActive(p.name)}" data-preset="${p.name}">${p.name}</button>`
+      ).join('')
+      : '';
 
     const fmtRemaining = (ms) => {
       const mins = Math.max(0, Math.round(ms / 60000));
@@ -905,9 +912,27 @@ class PoolTimerCard extends HTMLElement {
       return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
     };
 
-    const actionsHTML = `
-      <button class="chip action-btn ${this._action === 'flocculant' ? 'chip--warn-active' : ''}" data-action="flocculant">🌀 ${t('flocculant', lang)}</button>
-      <button class="chip action-btn ${this._action === 'product' ? 'chip--warn-active' : ''}" data-action="product">🧪 ${t('product', lang)}</button>`;
+    const actionsHTML = hasActions
+      ? `
+      ${flocHours > 0 ? `<button class="chip action-btn ${this._action === 'flocculant' ? 'chip--warn-active' : ''}" data-action="flocculant">🌀 ${t('flocculant', lang)}</button>` : ''}
+      ${prodHours > 0 ? `<button class="chip action-btn ${this._action === 'product' ? 'chip--warn-active' : ''}" data-action="product">🧪 ${t('product', lang)}</button>` : ''}`
+      : '';
+
+    /* ---- mode selector: dropdown if presets, buttons if not ---- */
+    const modeHTML = hasPresets
+      ? `<select class="mode-select" data-select="mode">
+          <option value="Auto" ${this._mode === 'Auto' ? 'selected' : ''}>${t('mode_auto', lang)}</option>
+          <option value="Perm" ${this._mode === 'Perm' ? 'selected' : ''}>${t('mode_perm', lang)}</option>
+          <option value="OFF" ${this._mode === 'OFF' ? 'selected' : ''}>${t('mode_off', lang)}</option>
+        </select>`
+      : `<div class="mode-bar">
+          <button class="mode-btn ${this._mode === 'Auto' && !this._action ? 'mode-btn--active' : ''}"
+            data-mode="Auto">${t('mode_auto', lang)}</button>
+          <button class="mode-btn ${this._mode === 'Perm' && !this._action ? 'mode-btn--active' : ''}"
+            data-mode="Perm">${t('mode_perm', lang)}</button>
+          <button class="mode-btn ${this._mode === 'OFF' && !this._action ? 'mode-btn--active' : ''}"
+            data-mode="OFF">${t('mode_off', lang)}</button>
+        </div>`;
 
     let bannerHTML = '';
     if (this._action === 'product' || this._action === 'flocculant') {
@@ -1056,7 +1081,7 @@ class PoolTimerCard extends HTMLElement {
           fill: url(#knob-inner-gradient);
         }
 
-        /* Mode selector */
+        /* Mode selector — buttons */
         .mode-bar {
           display: flex;
           justify-content: center;
@@ -1083,6 +1108,35 @@ class PoolTimerCard extends HTMLElement {
           color: #fff;
           border-color: ${COLORS.segOnStroke};
           box-shadow: 0 2px 12px rgba(74,144,217,0.3);
+        }
+
+        /* Mode selector — dropdown */
+        .mode-select {
+          display: block;
+          width: auto;
+          max-width: 200px;
+          margin: 14px auto 0;
+          padding: 8px 14px;
+          border-radius: 10px;
+          border: 1.5px solid ${COLORS.border};
+          background: ${COLORS.modeInactive};
+          color: ${COLORS.textPrimary};
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s ease;
+        }
+        .mode-select:hover {
+          background: #4A4A4E;
+        }
+        .mode-select:focus {
+          outline: none;
+          border-color: ${COLORS.segOnStroke};
+          box-shadow: 0 2px 12px rgba(74,144,217,0.3);
+        }
+        .mode-select option {
+          background: #2c2c2e;
+          color: ${COLORS.textPrimary};
         }
 
         /* Info panel */
@@ -1266,21 +1320,15 @@ class PoolTimerCard extends HTMLElement {
             ${nextChangeText ? `<div class="info-next">${nextChangeText}</div>` : ''}
           </div>
 
-          <div class="mode-bar">
-            <button class="mode-btn ${this._mode === 'Auto' && !this._action ? 'mode-btn--active' : ''}"
-              data-mode="Auto">${t('mode_auto', lang)}</button>
-            <button class="mode-btn ${this._mode === 'Perm' && !this._action ? 'mode-btn--active' : ''}"
-              data-mode="Perm">${t('mode_perm', lang)}</button>
-            <button class="mode-btn ${this._mode === 'OFF' && !this._action ? 'mode-btn--active' : ''}"
-              data-mode="OFF">${t('mode_off', lang)}</button>
-          </div>
+          ${modeHTML}
 
           ${presetsHTML ? `
           <div class="section-label">${t('presets', lang)}</div>
           <div class="chip-bar">${presetsHTML}</div>` : ''}
 
+          ${actionsHTML ? `
           <div class="section-label">${t('actions', lang)}</div>
-          <div class="chip-bar">${actionsHTML}</div>
+          <div class="chip-bar">${actionsHTML}</div>` : ''}
 
           ${bannerHTML}
         </div>
@@ -1296,7 +1344,13 @@ class PoolTimerCard extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
 
-    // Mode buttons (recreated on every render, so (re)bind each time).
+    // Mode selector: buttons OR dropdown (recreated on every render)
+    const modeSelect = root.querySelector('.mode-select');
+    if (modeSelect) {
+      modeSelect.addEventListener('change', (e) => {
+        this._setMode(e.currentTarget.value);
+      });
+    }
     root.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._setMode(e.currentTarget.dataset.mode);
@@ -1451,7 +1505,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.1.0 ',
+  '%c POOL-TIMER-CARD %c v2.2.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

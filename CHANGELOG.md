@@ -4,6 +4,14 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-06-10
+
+### Added
+- **Conditional UI rendering**: presets only show if configured; quick actions only show if
+  durations are set.
+- **Smart mode selector**: when presets are configured, the mode selector becomes a
+  dropdown menu (faster preset switching). Without presets, it stays as 3 buttons.
+
 ## [2.1.0] - 2026-06-10
 
 ### Added
@@ -62,6 +70,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.2.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.2.0
 [2.1.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.1.0
 [2.0.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.0.0
 [1.2.0]: https://github.com/serweck/pool-timer-card/releases/tag/v1.2.0
