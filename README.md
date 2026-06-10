@@ -2,7 +2,7 @@
 
 A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Inspired by real analog pool timers, it lets you visually schedule your pool pump with interactive half-hour segments — plus **presets** (Summer / Winter) and **timed treatment actions** (flocculant / shock).
 
-![Pool Timer Card Preview](assets/preview.png)
+<img src="assets/preview.png" alt="Pool Timer Card Preview" width="500" style="max-width: 100%; border-radius: 8px; margin: 20px 0;" />
 
 ## Features
 
