@@ -273,7 +273,8 @@ class PoolTimerCard extends HTMLElement {
     // Support new quick_actions format, fall back to legacy flocculant_hours/product_hours
     if (Array.isArray(config.quick_actions) && config.quick_actions.length) {
       return config.quick_actions.map(a => ({
-        name: a.name || 'Action',
+        // Keep an empty name empty — the card then shows the icon only.
+        name: (a.name || '').trim(),
         hours: num(a.hours, 2),
         icon: a.icon || '⏱️',
         after: a.after || 'Auto',  // 'OFF', 'Auto', or preset name
@@ -1908,7 +1909,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.6.1 ',
+  '%c POOL-TIMER-CARD %c v2.6.2 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
