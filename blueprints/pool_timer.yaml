@@ -41,8 +41,10 @@ blueprint:
           filter:
             - domain: input_text
 
-mode: single
-max_exceeded: silent
+# 'restart' so each minute cancels any still-running (e.g. hung switch call) run
+# and re-evaluates cleanly. 'single' would silently drop every tick while a prior
+# run is stuck, which looks exactly like "the trigger never fires".
+mode: restart
 
 trigger:
   # Re-evaluate every minute...
