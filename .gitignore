@@ -1,0 +1,17 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
+
+# Node (not used at runtime, but in case tooling is added)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Local backups
+*.bak
+*.orig

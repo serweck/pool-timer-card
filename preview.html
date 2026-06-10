@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pool Timer Card — Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+    .preview-wrapper {
+      width: 100%;
+      max-width: 420px;
+    }
+    /* Stub ha-card so the component renders */
+    ha-card { display: block; }
+  </style>
+</head>
+<body>
+  <div class="preview-wrapper">
+    <pool-timer-card id="card"></pool-timer-card>
+  </div>
+
+  <script src="pool-timer-card.js"></script>
+  <script>
+    // Minimal HA stub for standalone preview
+    const card = document.getElementById('card');
+
+    card.setConfig({
+      entity: 'switch.pool_pump',
+      name: 'Pool Timer',
+      schedule_entity: 'input_text.pool_timer_schedule',
+      mode_entity: 'input_select.pool_timer_mode',
+      schedule: [
+        { start: '08:00', end: '12:00' },
+        { start: '16:00', end: '18:00' },
+      ],
+    });
+
+    // Fake hass object for preview
+    const fakeHass = {
+      language: 'es',
+      states: {
+        'switch.pool_pump': { state: 'off', entity_id: 'switch.pool_pump' },
+        'input_text.pool_timer_schedule': { state: '', entity_id: 'input_text.pool_timer_schedule' },
+        'input_select.pool_timer_mode': { state: 'Auto', entity_id: 'input_select.pool_timer_mode' },
+      },
+      callService: (domain, service, data) => {
+        console.log(`[HA Stub] ${domain}.${service}`, data);
+        // Simulate switch toggle
+        if (domain === 'switch') {
+          const sw = fakeHass.states['switch.pool_pump'];
+          sw.state = service === 'turn_on' ? 'on' : 'off';
+          // Re-render after a small delay to simulate HA response
+          setTimeout(() => { card.hass = { ...fakeHass }; }, 500);
+        }
+      },
+    };
+
+    card.hass = fakeHass;
+  </script>
+</body>
+</html>
