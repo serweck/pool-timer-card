@@ -139,11 +139,19 @@ presets:
 | **Perm** | Pump is always ON (override) |
 | **OFF** | Pump is always OFF (override) |
 
+**Mode selector UI:**
+- **With presets** → dropdown menu (faster mode + preset switching)
+- **Without presets** → 3 buttons (original UI)
+
 ## Presets
 
-Tap a preset to load its full 48-segment schedule and switch to **Auto**. Presets
-are defined in the card YAML (`presets:`). Editing the segments after loading a
-preset just creates a one-off schedule; it does not modify the preset definition.
+Use the **Presets dropdown** (when you have presets configured) to:
+- **Select a preset** to load its full 48-segment schedule and switch to **Auto**
+- **Choose "Custom"** to edit segments manually on the dial
+
+When you manually edit the dial, the preset automatically switches to **Custom** so
+you know you're in edit mode. Presets are defined in the card YAML (`presets:`)
+and editing does not modify the original preset definition.
 
 ## Quick Actions
 

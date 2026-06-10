@@ -613,7 +613,10 @@ class PoolTimerCard extends HTMLElement {
     this._dragging = false;
     this._dragValue = null;
     if (this._saveDebounce) { clearTimeout(this._saveDebounce); this._saveDebounce = null; }
+    // User edited manually → clear preset and mark as Custom
+    this._preset = null;
     this._saveSchedule();       // authoritative, immediate write
+    this._saveState();          // persist the cleared preset
     this._evaluateSchedule();   // apply the new schedule to the pump now
     this._render();             // safe to fully refresh now the gesture ended
   }
@@ -897,12 +900,13 @@ class PoolTimerCard extends HTMLElement {
     const prodHours = this._config.product_hours || 0;
     const hasActions = flocHours > 0 || prodHours > 0;
 
-    const presetActive = (name) =>
-      (this._preset === name && this._mode === 'Auto' && !this._action) ? 'chip--active' : '';
     const presetsHTML = hasPresets
-      ? presets.map(p =>
-        `<button class="chip preset-btn ${presetActive(p.name)}" data-preset="${p.name}">${p.name}</button>`
-      ).join('')
+      ? `<select class="preset-select" data-select="preset">
+          <option value="">Custom</option>
+          ${presets.map(p =>
+            `<option value="${p.name}" ${this._preset === p.name ? 'selected' : ''}>${p.name}</option>`
+          ).join('')}
+        </select>`
       : '';
 
     const fmtRemaining = (ms) => {
@@ -1139,6 +1143,35 @@ class PoolTimerCard extends HTMLElement {
           color: ${COLORS.textPrimary};
         }
 
+        /* Preset selector — dropdown */
+        .preset-select {
+          display: block;
+          width: 100%;
+          max-width: 200px;
+          margin: 8px auto 0;
+          padding: 8px 14px;
+          border-radius: 10px;
+          border: 1.5px solid ${COLORS.border};
+          background: ${COLORS.modeInactive};
+          color: ${COLORS.textPrimary};
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s ease;
+        }
+        .preset-select:hover {
+          background: #4A4A4E;
+        }
+        .preset-select:focus {
+          outline: none;
+          border-color: ${COLORS.segOnStroke};
+          box-shadow: 0 2px 12px rgba(74,144,217,0.3);
+        }
+        .preset-select option {
+          background: #2c2c2e;
+          color: ${COLORS.textPrimary};
+        }
+
         /* Info panel */
         .info {
           text-align: center;
@@ -1324,7 +1357,7 @@ class PoolTimerCard extends HTMLElement {
 
           ${presetsHTML ? `
           <div class="section-label">${t('presets', lang)}</div>
-          <div class="chip-bar">${presetsHTML}</div>` : ''}
+          ${presetsHTML}` : ''}
 
           ${actionsHTML ? `
           <div class="section-label">${t('actions', lang)}</div>
@@ -1357,12 +1390,21 @@ class PoolTimerCard extends HTMLElement {
       });
     });
 
-    // Preset buttons
-    root.querySelectorAll('.preset-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        this._selectPreset(e.currentTarget.dataset.preset);
+    // Preset selector dropdown
+    const presetSelect = root.querySelector('.preset-select');
+    if (presetSelect) {
+      presetSelect.addEventListener('change', (e) => {
+        const value = e.currentTarget.value;
+        if (value) {
+          this._selectPreset(value);
+        } else {
+          // "Custom" selected — clear the preset, stay in edit mode
+          this._preset = null;
+          this._saveState();
+          this._render();
+        }
       });
-    });
+    }
 
     // Quick-action buttons (flocculant / product)
     root.querySelectorAll('.action-btn').forEach(btn => {
@@ -1505,7 +1547,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.2.0 ',
+  '%c POOL-TIMER-CARD %c v2.3.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

@@ -4,6 +4,15 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-06-10
+
+### Added
+- **Presets as dropdown menu**: when presets are configured, a dropdown
+  lets you quickly switch between them + a **Custom** option to edit manually.
+  Selecting *Custom* clears the preset and you can edit segments on the dial.
+- **Auto-Custom mode**: when you manually edit a segment on the dial, the preset
+  automatically switches to *Custom* and stays in edit mode.
+
 ## [2.2.0] - 2026-06-10
 
 ### Added
@@ -70,6 +79,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.3.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.3.0
 [2.2.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.2.0
 [2.1.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.1.0
 [2.0.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.0.0
