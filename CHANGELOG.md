@@ -4,6 +4,15 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-06-10
+
+### Added
+- **One-click helper auto-setup.** If any required helper is missing (or the
+  schedule helper's `max` is below 48), the card shows a banner with a
+  *Create helpers* / *Fix it* button. For admins it creates the helpers and
+  fixes the `max` via the HA WebSocket collection API (`input_text/create`,
+  `input_select/create`, `input_text/update`). Non-admins get an instruction note.
+
 ## [2.0.0] - 2026-06-10
 
 ### Added
@@ -53,6 +62,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.1.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.1.0
 [2.0.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.0.0
 [1.2.0]: https://github.com/serweck/pool-timer-card/releases/tag/v1.2.0
 [1.1.0]: https://github.com/serweck/pool-timer-card/releases/tag/v1.1.0

@@ -64,6 +64,14 @@ const TRANSLATIONS = {
     product_running: 'Treatment running',
     remaining: 'left',
     returns_to: 'back to',
+    setup_title: 'Setup needed',
+    setup_missing: 'Required helpers are missing.',
+    setup_create: 'Create helpers',
+    setup_max_issue: 'The schedule helper max length is below 48, so it can\'t save.',
+    setup_fix: 'Fix it',
+    setup_admin_only: 'Ask an administrator to create the required helpers.',
+    setup_busy: 'Working…',
+    setup_error: 'Setup failed — see the browser console.',
   },
   es: {
     pump_on: 'Bomba: ON',
@@ -92,6 +100,14 @@ const TRANSLATIONS = {
     product_running: 'Tratamiento en curso',
     remaining: 'restante',
     returns_to: 'vuelve a',
+    setup_title: 'Falta configuración',
+    setup_missing: 'Faltan helpers necesarios.',
+    setup_create: 'Crear helpers',
+    setup_max_issue: 'El helper del horario tiene longitud máxima menor de 48 y no puede guardar.',
+    setup_fix: 'Arreglar',
+    setup_admin_only: 'Pide a un administrador que cree los helpers necesarios.',
+    setup_busy: 'Trabajando…',
+    setup_error: 'Error en la configuración — mira la consola del navegador.',
   },
 };
 
@@ -219,6 +235,9 @@ class PoolTimerCard extends HTMLElement {
     this._actionUntil = 0;        // epoch ms when the ON phase of an action ends
     this._returnMode = 'Auto';    // base mode to restore after a timed action
     this._lastStateSaveTime = 0;  // lockout for the action/preset state helper
+    // One-click helper setup
+    this._setupBusy = false;
+    this._setupError = null;
   }
 
   /* ----- HA interface --------------------------------------------- */
@@ -658,6 +677,82 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
+  /* ----- one-click helper auto-setup ------------------------------
+   * Detects missing helpers (and a too-small schedule `max`) and can create /
+   * fix them via the HA WebSocket collection API — the same calls the built-in
+   * Helpers UI uses. Only admins can do this; others get an instruction note.
+   * ---------------------------------------------------------------- */
+  _helperDefs() {
+    const titleize = (id) => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const zeros = new Array(SEGMENT_COUNT).fill('0').join('');
+    const defs = [];
+    const sched = this._config.schedule_entity;
+    if (sched && sched.startsWith('input_text.')) {
+      defs.push({ entity: sched, domain: 'input_text',
+        create: { name: titleize(sched.split('.')[1]), min: 0, max: 255, initial: zeros, mode: 'text' } });
+    }
+    const mode = this._config.mode_entity;
+    if (mode && mode.startsWith('input_select.')) {
+      defs.push({ entity: mode, domain: 'input_select',
+        create: { name: titleize(mode.split('.')[1]), options: ['Auto', 'Perm', 'OFF'], initial: 'Auto' } });
+    }
+    const st = this._config.state_entity;
+    if (st && st.startsWith('input_text.')) {
+      defs.push({ entity: st, domain: 'input_text',
+        create: { name: titleize(st.split('.')[1]), min: 0, max: 255, initial: '', mode: 'text' } });
+    }
+    return defs;
+  }
+
+  _setupIssues() {
+    if (!this._hass) return { missing: [], maxTooSmall: false, canFix: false };
+    const missing = this._helperDefs().filter(d => !this._hass.states[d.entity]);
+    const sched = this._hass.states[this._config.schedule_entity];
+    const schedMax = sched ? Number(sched.attributes && sched.attributes.max) : NaN;
+    const maxTooSmall = !!(sched && schedMax > 0 && schedMax < SEGMENT_COUNT);
+    const canFix = !!(this._hass.user && this._hass.user.is_admin);
+    return { missing, maxTooSmall, canFix };
+  }
+
+  async _runSetup() {
+    if (!this._hass || this._setupBusy) return;
+    const { missing, maxTooSmall, canFix } = this._setupIssues();
+    if (!canFix) return;
+    this._setupBusy = true;
+    this._setupError = null;
+    this._render();
+    try {
+      // Create any missing helpers.
+      for (const d of missing) {
+        await this._hass.callWS({ type: `${d.domain}/create`, ...d.create });
+      }
+      // Fix the schedule helper's max length if it's below 48.
+      if (maxTooSmall) {
+        const list = await this._hass.callWS({ type: 'input_text/list' });
+        const objId = this._config.schedule_entity.split('.')[1];
+        const item = (list || []).find(i => i.id === objId);
+        if (item) {
+          await this._hass.callWS({
+            type: 'input_text/update',
+            input_text_id: item.id,
+            name: item.name,
+            min: 0,
+            max: 255,
+            mode: item.mode || 'text',
+            pattern: item.pattern || null,
+            initial: item.initial || null,
+          });
+        }
+      }
+    } catch (e) {
+      this._setupError = String((e && e.message) ? e.message : e);
+      console.error('[pool-timer-card] auto-setup failed:', e);
+    } finally {
+      this._setupBusy = false;
+      this._render();
+    }
+  }
+
   /* ----- next change calculation ---------------------------------- */
   _getNextChange() {
     const now = new Date();
@@ -772,6 +867,28 @@ class PoolTimerCard extends HTMLElement {
     }
     // While a timed action overrides the schedule, the "next change" hint is misleading.
     if (this._action) nextChangeText = '';
+
+    /* ---- helper auto-setup banner ---- */
+    const issues = this._setupIssues();
+    let setupHTML = '';
+    if (issues.missing.length > 0 || issues.maxTooSmall) {
+      const msg = issues.missing.length > 0 ? t('setup_missing', lang) : t('setup_max_issue', lang);
+      const btnLabel = this._setupBusy
+        ? t('setup_busy', lang)
+        : (issues.missing.length > 0 ? t('setup_create', lang) : t('setup_fix', lang));
+      const action = issues.canFix
+        ? `<button class="chip setup-btn" ${this._setupBusy ? 'disabled' : ''}>${btnLabel}</button>`
+        : `<span class="setup-note">${t('setup_admin_only', lang)}</span>`;
+      const err = this._setupError ? `<div class="setup-err">${t('setup_error', lang)}</div>` : '';
+      setupHTML = `
+        <div class="setup-banner">
+          <div class="setup-row">
+            <span class="setup-txt">⚠️ <b>${t('setup_title', lang)}:</b> ${msg}</span>
+            ${action}
+          </div>
+          ${err}
+        </div>`;
+    }
 
     /* ---- presets, quick actions & action banner ---- */
     const presets = this._config.presets || [];
@@ -1057,9 +1174,41 @@ class PoolTimerCard extends HTMLElement {
         }
         .banner-txt { flex: 1; }
         .banner-btn { white-space: nowrap; }
+
+        /* Setup banner */
+        .setup-banner {
+          margin-bottom: 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(255,59,48,0.10);
+          border: 1px solid ${COLORS.ledOff};
+          font-size: 13px;
+          line-height: 1.35;
+          color: ${COLORS.textPrimary};
+        }
+        .setup-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .setup-txt { flex: 1; }
+        .setup-note {
+          font-size: 12px;
+          color: ${COLORS.textSecondary};
+          white-space: nowrap;
+        }
+        .setup-btn { white-space: nowrap; }
+        .setup-btn[disabled] { opacity: 0.6; cursor: default; }
+        .setup-err {
+          margin-top: 6px;
+          font-size: 12px;
+          color: ${COLORS.ledOff};
+        }
       </style>
       <ha-card>
         <div class="card">
+          ${setupHTML}
           <div class="header">
             <div class="header-left" style="width: 33%;">
               <span class="title">${cardName}</span>
@@ -1172,6 +1321,10 @@ class PoolTimerCard extends HTMLElement {
     root.querySelectorAll('.banner-btn').forEach(btn => {
       btn.addEventListener('click', () => this._clearAction());
     });
+
+    // One-click helper auto-setup
+    const setupBtn = root.querySelector('.setup-btn');
+    if (setupBtn) setupBtn.addEventListener('click', () => this._runSetup());
 
     // Pointer handling is bound ONCE on persistent targets (the shadowRoot,
     // which survives innerHTML swaps, and window). Delegation + hit-testing
@@ -1298,7 +1451,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.0.0 ',
+  '%c POOL-TIMER-CARD %c v2.1.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

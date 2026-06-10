@@ -6,6 +6,7 @@ A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Ins
 
 ## Features
 
+- 🪄 **One-click setup** — auto-creates the required helpers (admin) if missing, and fixes a too-small `max`
 - 🎛️ **48 interactive segments** (30 min each) — click or drag to schedule
 - ⏰ **Real-time clock needle** — auto-updates to show current time
 - 🔄 **3 operation modes**: Auto / Perm / OFF
@@ -35,6 +36,13 @@ A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Ins
 4. Refresh your browser
 
 ## Required Helpers
+
+> 🪄 **Automatic setup (easiest):** when you add the card and any required helper
+> is missing — or the schedule helper's `max` is below 48 — the card shows a
+> **"Create helpers" / "Fix it"** button. If you are an **admin**, one click
+> creates the helpers (and fixes the `max`) for you via Home Assistant's helper
+> API. Non-admins get a note to ask an admin. You can still create them manually
+> as described below.
 
 Create these helpers in **Settings → Devices & Services → Helpers**.
 
