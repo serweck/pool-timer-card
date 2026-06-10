@@ -1518,17 +1518,27 @@ class PoolTimerCardEditor extends HTMLElement {
 
   _renderQuickActions() {
     const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
-    return actions.map((action, idx) => `
+    const html = `
+      <div class="list-header">
+        <span class="col-name">Name</span>
+        <span class="col-hours">Hours</span>
+        <span class="col-after">After</span>
+        <span class="col-action"></span>
+      </div>
+    `;
+    return html + actions.map((action, idx) => `
       <div class="list-item">
-        <input type="text" class="action-name" data-idx="${idx}" value="${action.name}"
-          placeholder="Flocculant" />
-        <input type="number" class="action-hours" data-idx="${idx}" value="${action.hours}"
+        <div class="col-name">
+          <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
+            placeholder="🌀" maxlength="3" style="width: 40px; text-align: center;" />
+          <input type="text" class="action-name" data-idx="${idx}" value="${action.name}"
+            placeholder="Name" style="flex: 1;" />
+        </div>
+        <input type="number" class="action-hours col-hours" data-idx="${idx}" value="${action.hours}"
           min="0.5" step="0.5" placeholder="2" />
-        <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
-          placeholder="🌀" maxlength="3" />
-        <select class="action-after" data-idx="${idx}">
+        <select class="action-after col-after" data-idx="${idx}">
           <option value="OFF" ${action.after === 'OFF' ? 'selected' : ''}>Lock OFF</option>
-          <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto mode</option>
+          <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto</option>
           ${(this._config.presets || DEFAULT_PRESETS).map(p =>
             `<option value="${p.name}" ${action.after === p.name ? 'selected' : ''}>${p.name}</option>`
           ).join('')}
@@ -1540,8 +1550,15 @@ class PoolTimerCardEditor extends HTMLElement {
 
   _renderPresets() {
     const presets = this._config.presets || DEFAULT_PRESETS;
-    return presets.map((preset, idx) => `
-      <div class="list-item">
+    const html = `
+      <div class="list-header" style="grid-template-columns: 150px 1fr 32px;">
+        <span class="col-name">Preset Name</span>
+        <span>Time Ranges</span>
+        <span></span>
+      </div>
+    `;
+    return html + presets.map((preset, idx) => `
+      <div class="list-item" style="grid-template-columns: 150px 1fr 32px;">
         <input type="text" class="preset-name" data-idx="${idx}" value="${preset.name}"
           placeholder="Verano" />
         <input type="text" class="preset-schedule" data-idx="${idx}"
@@ -1597,26 +1614,44 @@ class PoolTimerCardEditor extends HTMLElement {
           border-color: #4A90D9;
           box-shadow: 0 0 0 2px rgba(74,144,217,0.2);
         }
+        .list-header {
+          display: grid;
+          grid-template-columns: 1fr 80px 140px 32px;
+          gap: 8px;
+          padding: 8px 10px;
+          background: #4a4a4c;
+          border-radius: 4px;
+          margin-bottom: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #8e8e93;
+          align-items: center;
+        }
+        .col-name { text-align: left; }
+        .col-hours { text-align: center; }
+        .col-after { text-align: center; }
+        .col-action { text-align: center; }
+
         .list-item {
-          display: flex;
+          display: grid;
+          grid-template-columns: 1fr 80px 140px 32px;
           gap: 8px;
           align-items: center;
-          padding: 10px;
+          padding: 8px 10px;
           background: #3a3a3c;
           border-radius: 6px;
           border: 1px solid #4a4a4c;
         }
-        .list-item input {
-          flex: 1;
-          min-width: 0;
+        .list-item .col-name {
+          display: flex;
+          gap: 6px;
+          align-items: center;
         }
-        .list-item input[class="action-icon"],
-        .list-item input[class="action-hours"] {
-          flex: 0 0 auto;
-          min-width: 60px;
+        .list-item input {
+          padding: 6px 8px;
         }
         .list-item select {
-          flex: 0 0 120px;
+          padding: 6px 8px;
         }
         .btn-delete {
           flex: 0 0 32px;
