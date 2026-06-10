@@ -336,15 +336,44 @@ class PoolTimerCard extends HTMLElement {
       try {
         const s = JSON.parse(stState.state);
         this._preset = (s.preset !== undefined) ? s.preset : this._preset;
-        this._action = s.action || null;
+        // NOTE: action can be 0 (first action index), so never use `|| null`.
+        this._action = (s.action === null || s.action === undefined) ? null : s.action;
         this._actionUntil = Number(s.until) || 0;
         this._returnMode = s.ret || 'Auto';
       } catch (_) { /* ignore malformed state */ }
     }
 
     // Avoid re-rendering during drag or while a select is open
-    // (which would close the dropdown and break interactions)
-    if (!this._dragging && !this._selectOpen) this._render();
+    // (which would close the dropdown and break interactions).
+    if (this._dragging || this._selectOpen) return;
+
+    // HA fires `set hass` very frequently (any entity in the whole instance).
+    // Only rebuild the DOM when something this card actually displays changed —
+    // otherwise the constant innerHTML rebuild makes the UI flicker.
+    const sig = this._renderSignature();
+    if (sig === this._lastRenderSig) return;
+    this._lastRenderSig = sig;
+    this._render();
+  }
+
+  // A compact fingerprint of everything the card renders. If it's unchanged
+  // since the last render we can safely skip rebuilding the DOM.
+  _renderSignature() {
+    const pump = this._hass?.states?.[this._config.entity]?.state ?? '?';
+    const sched = this._hass?.states?.[this._config.schedule_entity];
+    const schedMax = sched?.attributes?.max ?? '?';
+    const hasState = this._hass?.states?.[this._config.state_entity] ? '1' : '0';
+    const hasMode = this._hass?.states?.[this._config.mode_entity] ? '1' : '0';
+    return [
+      pump,
+      this._mode,
+      (this._segments || []).map(s => (s ? '1' : '0')).join(''),
+      String(this._action),
+      this._actionUntil || 0,
+      this._preset || '',
+      this._retryState || '',
+      schedMax, hasState, hasMode,
+    ].join('|');
   }
 
   static getConfigElement() {
@@ -358,8 +387,7 @@ class PoolTimerCard extends HTMLElement {
       schedule_entity: 'input_text.pool_timer_schedule',
       mode_entity: 'input_select.pool_timer_mode',
       state_entity: 'input_text.pool_timer_state',
-      flocculant_hours: DEFAULT_FLOCCULANT_HOURS,
-      product_hours: DEFAULT_PRODUCT_HOURS,
+      quick_actions: DEFAULT_QUICK_ACTIONS,
       presets: DEFAULT_PRESETS,
     };
   }
@@ -461,7 +489,8 @@ class PoolTimerCard extends HTMLElement {
     this._lastStateSaveTime = Date.now();
     const payload = JSON.stringify({
       preset: this._preset || null,
-      action: this._action || null,
+      // NOTE: _action can be 0 (first action index), so never use `|| null` here.
+      action: (this._action === null || this._action === undefined) ? null : this._action,
       until: this._actionUntil || 0,
       ret: this._returnMode || 'Auto',
     });
@@ -1410,6 +1439,10 @@ class PoolTimerCard extends HTMLElement {
 
     // Bind events after innerHTML
     this._bindEvents();
+
+    // Keep the render fingerprint in sync so a direct _render() (e.g. from a
+    // button click) doesn't trigger a redundant rebuild on the next set hass().
+    if (this._hass) this._lastRenderSig = this._renderSignature();
   }
 
   /* ----- event binding -------------------------------------------- */
@@ -1519,28 +1552,29 @@ class PoolTimerCardEditor extends HTMLElement {
 
   _renderQuickActions() {
     const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
-    const html = `
+    const presets = this._config.presets || DEFAULT_PRESETS;
+    const header = `
       <div class="list-header action-header">
-        <span>Name</span>
+        <span>Icon · Name</span>
         <span>Hours</span>
         <span>After</span>
         <span></span>
       </div>
     `;
-    return html + actions.map((action, idx) => `
+    return header + actions.map((action, idx) => `
       <div class="list-item action-item">
-        <div style="display: flex; gap: 6px; align-items: center; min-width: 0;">
+        <div class="name-cell">
           <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
-            placeholder="🌀" maxlength="3" style="width: 35px; padding: 4px 2px; text-align: center; flex-shrink: 0;" />
-          <input type="text" class="action-name" data-idx="${idx}" value="${action.name}"
-            placeholder="Name" style="flex: 1; min-width: 0;" />
+            placeholder="🌀" maxlength="3" />
+          <input type="text" class="action-name" data-idx="${idx}" value="${action.name || ''}"
+            placeholder="(icon only)" />
         </div>
         <input type="number" class="action-hours" data-idx="${idx}" value="${action.hours}"
-          min="0.5" step="0.5" placeholder="2" style="width: 60px;" />
-        <select class="action-after" data-idx="${idx}" style="min-width: 100px;">
+          min="0.5" step="0.5" placeholder="2" />
+        <select class="action-after" data-idx="${idx}">
           <option value="OFF" ${action.after === 'OFF' ? 'selected' : ''}>Lock OFF</option>
           <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto</option>
-          ${(this._config.presets || DEFAULT_PRESETS).map(p =>
+          ${presets.map(p =>
             `<option value="${p.name}" ${action.after === p.name ? 'selected' : ''}>${p.name}</option>`
           ).join('')}
         </select>
@@ -1551,21 +1585,21 @@ class PoolTimerCardEditor extends HTMLElement {
 
   _renderPresets() {
     const presets = this._config.presets || DEFAULT_PRESETS;
-    const html = `
-      <div class="list-header" style="grid-template-columns: 150px 1fr 32px;">
-        <span class="col-name">Preset Name</span>
-        <span>Time Ranges</span>
+    const header = `
+      <div class="list-header preset-header">
+        <span>Name</span>
+        <span>Time ranges</span>
         <span></span>
       </div>
     `;
-    return html + presets.map((preset, idx) => `
-      <div class="list-item" style="grid-template-columns: 150px 1fr 32px;">
+    return header + presets.map((preset, idx) => `
+      <div class="list-item preset-item">
         <input type="text" class="preset-name" data-idx="${idx}" value="${preset.name}"
           placeholder="Verano" />
         <input type="text" class="preset-schedule" data-idx="${idx}"
           value="${preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : ''}"
           placeholder="08:00-13:00, 16:00-20:00" />
-        <button class="btn-delete" data-idx="${idx}">✕</button>
+        <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
       </div>
     `).join('');
   }
@@ -1577,6 +1611,7 @@ class PoolTimerCardEditor extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>
+        * { box-sizing: border-box; }
         .editor {
           padding: 16px;
           display: flex;
@@ -1603,6 +1638,7 @@ class PoolTimerCardEditor extends HTMLElement {
           color: var(--secondary-text-color, #8e8e93);
         }
         input, select {
+          width: 100%;
           padding: 8px 12px;
           border: 1px solid #3a3a3c;
           border-radius: 6px;
@@ -1615,51 +1651,68 @@ class PoolTimerCardEditor extends HTMLElement {
           border-color: #4A90D9;
           box-shadow: 0 0 0 2px rgba(74,144,217,0.2);
         }
-        .list-header {
+
+        /* Shared 4-column grid: name | hours | after | delete.
+           Both the header and each row use the SAME template so they align. */
+        .action-header,
+        .action-item {
           display: grid;
-          gap: 8px;
-          padding: 8px 10px;
-          background: #4a4a4c;
-          border-radius: 4px;
-          margin-bottom: 4px;
-          font-size: 11px;
-          font-weight: 600;
-          color: #8e8e93;
+          grid-template-columns: 1fr 52px 92px 28px;
+          gap: 6px;
           align-items: center;
         }
-        .action-header {
-          grid-template-columns: 1fr 60px 100px 32px;
+        .preset-header,
+        .preset-item {
+          display: grid;
+          grid-template-columns: 1fr 1.6fr 28px;
+          gap: 6px;
+          align-items: center;
         }
 
+        .list-header {
+          padding: 4px 8px;
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          color: #8e8e93;
+        }
+        .list-header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         .list-item {
-          display: grid;
-          gap: 8px;
-          align-items: center;
-          padding: 8px 10px;
+          padding: 8px;
           background: #3a3a3c;
           border-radius: 6px;
           border: 1px solid #4a4a4c;
         }
-        .action-item {
-          grid-template-columns: 1fr 60px 100px 32px;
-        }
-        .list-item input {
-          padding: 6px 8px;
-          font-size: 12px;
-        }
+        .list-item input,
         .list-item select {
           padding: 6px 8px;
           font-size: 12px;
         }
+        /* icon + name share the first column */
+        .name-cell {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          min-width: 0;
+        }
+        .name-cell .action-icon {
+          width: 38px;
+          flex: 0 0 38px;
+          padding: 6px 2px;
+          text-align: center;
+        }
+        .name-cell .action-name { min-width: 0; }
         .btn-delete {
-          flex: 0 0 32px;
-          padding: 6px;
+          padding: 6px 0;
           background: #FF3B30;
           color: white;
           border: none;
           border-radius: 4px;
           cursor: pointer;
           font-weight: 600;
+          font-size: 12px;
           transition: opacity 0.2s;
         }
         .btn-delete:hover {
@@ -1855,7 +1908,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.6.0 ',
+  '%c POOL-TIMER-CARD %c v2.6.1 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
