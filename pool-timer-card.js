@@ -769,6 +769,14 @@ class PoolTimerCard extends HTMLElement {
     });
   }
 
+  // Check if a corner action entity is active (for visual feedback).
+  _isCornerActionActive(actionIdx) {
+    const action = this._config.corner_actions?.[actionIdx];
+    if (!action || !action.entity_id || !this._hass) return false;
+    const entityState = this._hass.states?.[action.entity_id];
+    return entityState?.state === 'on';
+  }
+
   /* ----- one-click helper auto-setup ------------------------------
    * Detects missing helpers (and a too-small schedule `max`) and can create /
    * fix them via the HA WebSocket collection API — the same calls the built-in
@@ -1142,26 +1150,36 @@ class PoolTimerCard extends HTMLElement {
           width: 48px;
           height: 48px;
           border-radius: 8px;
-          border: none;
-          background: ${COLORS.modeActive};
-          color: white;
-          font-size: 18px;
-          font-weight: 600;
+          border: 2px solid rgba(74,144,217,0.4);
+          background: rgba(255,255,255,0.08);
+          color: ${COLORS.textPrimary};
+          font-size: 20px;
           cursor: pointer;
           pointer-events: all;
           display: flex;
           align-items: center;
           justify-content: center;
           transition: all 0.2s ease;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-          title-attr: attr(title);
+          backdrop-filter: blur(8px);
         }
         .corner-btn:hover {
-          transform: scale(1.1);
-          box-shadow: 0 4px 12px rgba(74,144,217,0.4);
+          border-color: rgba(74,144,217,0.8);
+          background: rgba(74,144,217,0.15);
+          transform: scale(1.08);
+          box-shadow: 0 0 12px rgba(74,144,217,0.3);
         }
         .corner-btn:active {
-          transform: scale(0.95);
+          transform: scale(0.92);
+        }
+        .corner-btn--active {
+          border-color: ${COLORS.modeActive};
+          background: rgba(74,144,217,0.25);
+          box-shadow: 0 0 12px rgba(74,144,217,0.4);
+          color: white;
+        }
+        .corner-btn--active:hover {
+          background: rgba(74,144,217,0.35);
+          box-shadow: 0 0 16px rgba(74,144,217,0.5);
         }
         .corner-tl { top: -8px; left: -8px; }
         .corner-tr { top: -8px; right: -8px; }
@@ -1487,7 +1505,9 @@ class PoolTimerCard extends HTMLElement {
             <div class="corner-actions">
               ${(this._config.corner_actions || []).map((action, idx) => {
                 const corners = ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'];
-                return `<button class="corner-btn ${corners[idx]}" data-corner-idx="${idx}" title="${action.name}">${action.icon}</button>`;
+                const isActive = this._isCornerActionActive(idx);
+                const activeClass = isActive ? 'corner-btn--active' : '';
+                return `<button class="corner-btn ${corners[idx]} ${activeClass}" data-corner-idx="${idx}" title="${action.name}">${action.icon}</button>`;
               }).join('')}
             </div>
           </div>
@@ -1986,7 +2006,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.7.0 ',
+  '%c POOL-TIMER-CARD %c v2.7.1 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
