@@ -259,6 +259,7 @@ class PoolTimerCard extends HTMLElement {
       mode_entity: config.mode_entity || 'input_select.pool_timer_mode',
       state_entity: config.state_entity || 'input_text.pool_timer_state',
       quick_actions: this._parseQuickActions(config),
+      corner_actions: this._parseCornerActions(config),
       presets: (Array.isArray(config.presets) && config.presets.length)
         ? config.presets
         : DEFAULT_PRESETS,
@@ -287,6 +288,19 @@ class PoolTimerCard extends HTMLElement {
     if (flocHours > 0) actions.push({ name: 'Flocculant', hours: flocHours, icon: '🌀', after: 'OFF' });
     if (prodHours > 0) actions.push({ name: 'Treatment', hours: prodHours, icon: '🧪', after: 'Auto' });
     return actions.length ? actions : DEFAULT_QUICK_ACTIONS;
+  }
+
+  _parseCornerActions(config) {
+    // Parse corner_actions: array of up to 4 quick-toggle actions (no timer)
+    // Each has: name, icon, service (service domain), entity_id, action (turn_on/turn_off/toggle)
+    if (!Array.isArray(config.corner_actions)) return [];
+    return config.corner_actions.slice(0, 4).map(a => ({
+      name: a.name || 'Action',
+      icon: a.icon || '◆',
+      service: a.service || 'switch',     // e.g. 'switch', 'light'
+      entity_id: a.entity_id || '',
+      action: a.action || 'toggle',       // turn_on, turn_off, toggle
+    }));
   }
 
   set hass(hass) {
@@ -745,6 +759,16 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
+  // Execute a corner action (quick toggle, no timer).
+  _callCornerAction(actionIdx) {
+    const action = this._config.corner_actions?.[actionIdx];
+    if (!action || !action.entity_id) return;
+    const service = `${action.service}/${action.action}`;
+    this._hass?.callService(action.service, action.action, {
+      entity_id: action.entity_id,
+    });
+  }
+
   /* ----- one-click helper auto-setup ------------------------------
    * Detects missing helpers (and a too-small schedule `max`) and can create /
    * fix them via the HA WebSocket collection API — the same calls the built-in
@@ -1090,7 +1114,7 @@ class PoolTimerCard extends HTMLElement {
           font-weight: 500;
         }
 
-        /* Dial container */
+        /* Dial container + corner actions */
         .dial-container {
           position: relative;
           width: 100%;
@@ -1103,6 +1127,46 @@ class PoolTimerCard extends HTMLElement {
           height: 100%;
           display: block;
         }
+
+        /* Corner action buttons */
+        .corner-actions {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          top: 0;
+          left: 0;
+          pointer-events: none;
+        }
+        .corner-btn {
+          position: absolute;
+          width: 48px;
+          height: 48px;
+          border-radius: 8px;
+          border: none;
+          background: ${COLORS.modeActive};
+          color: white;
+          font-size: 18px;
+          font-weight: 600;
+          cursor: pointer;
+          pointer-events: all;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          title-attr: attr(title);
+        }
+        .corner-btn:hover {
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(74,144,217,0.4);
+        }
+        .corner-btn:active {
+          transform: scale(0.95);
+        }
+        .corner-tl { top: -8px; left: -8px; }
+        .corner-tr { top: -8px; right: -8px; }
+        .corner-bl { bottom: -8px; left: -8px; }
+        .corner-br { bottom: -8px; right: -8px; }
 
         /* Segments */
         .seg {
@@ -1420,6 +1484,12 @@ class PoolTimerCard extends HTMLElement {
                     class="needle-line"/>
               <circle cx="${CX}" cy="${CY}" r="5" class="needle-dot"/>
             </svg>
+            <div class="corner-actions">
+              ${(this._config.corner_actions || []).map((action, idx) => {
+                const corners = ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'];
+                return `<button class="corner-btn ${corners[idx]}" data-corner-idx="${idx}" title="${action.name}">${action.icon}</button>`;
+              }).join('')}
+            </div>
           </div>
 
           <div class="info">
@@ -1485,11 +1555,19 @@ class PoolTimerCard extends HTMLElement {
       presetSelect.addEventListener('blur', () => { this._selectOpen = false; });
     }
 
-    // Quick-action buttons
+    // Quick-action buttons (timed)
     root.querySelectorAll('.action-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.actionIdx, 10);
         this._startAction(idx);
+      });
+    });
+
+    // Corner action buttons (quick toggle, no timer)
+    root.querySelectorAll('.corner-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.cornerIdx, 10);
+        this._callCornerAction(idx);
       });
     });
 
@@ -1908,7 +1986,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.6.3 ',
+  '%c POOL-TIMER-CARD %c v2.7.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

@@ -4,6 +4,33 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.7.0] - 2026-06-10
+
+### Added
+- **Corner action buttons**: up to 4 quick-toggle buttons in the dial's corners
+  (top-left, top-right, bottom-left, bottom-right). Each executes a HA service
+  immediately (no timer). Configure in YAML:
+  ```yaml
+  corner_actions:
+    - name: "Jacuzzi"
+      icon: "🛁"
+      service: "switch"
+      entity_id: "switch.jacuzzi"
+      action: "toggle"
+    - name: "Pool Lights"
+      icon: "💡"
+      service: "light"
+      entity_id: "light.pool_lights"
+      action: "toggle"
+    - name: "Pool Robot"
+      icon: "🤖"
+      service: "switch"
+      entity_id: "switch.pool_robot"
+      action: "turn_on"
+  ```
+  Services: any HA service (switch, light, automation, etc.). Actions: toggle,
+  turn_on, turn_off.
+
 ## [2.6.3] - 2026-06-10
 
 ### Fixed
@@ -165,6 +192,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.7.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.7.0
 [2.6.3]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.3
 [2.6.2]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.2
 [2.6.1]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.1
