@@ -2,5 +2,6 @@
   "name": "Pool Timer Card",
   "render_readme": true,
   "filename": "pool-timer-card.js",
-  "content_in_root": true
+  "content_in_root": true,
+  "version": "2.3.1"
 }
