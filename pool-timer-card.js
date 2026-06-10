@@ -1101,7 +1101,6 @@ class PoolTimerCard extends HTMLElement {
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.25s ease;
           letter-spacing: 0.3px;
         }
         .mode-btn:hover {
@@ -1128,7 +1127,6 @@ class PoolTimerCard extends HTMLElement {
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.25s ease;
         }
         .mode-select:hover {
           background: #4A4A4E;
@@ -1157,7 +1155,6 @@ class PoolTimerCard extends HTMLElement {
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.25s ease;
         }
         .preset-select:hover {
           background: #4A4A4E;
@@ -1221,9 +1218,10 @@ class PoolTimerCard extends HTMLElement {
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s ease;
         }
-        .chip:hover { background: #4A4A4E; }
+        .chip:hover {
+          background: #4A4A4E;
+        }
         .chip--active {
           background: ${COLORS.modeActive};
           color: #fff;
