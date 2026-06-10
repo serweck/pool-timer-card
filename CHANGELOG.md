@@ -4,6 +4,13 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.1] - 2026-06-10
+
+### Fixed
+- **Blueprint trigger syntax**: changed `minutes: "/1"` to `minutes: "*/1"` (Home
+  Assistant uses standard cron format, not slash notation). The automation was not
+  firing at all before this fix.
+
 ## [2.8.0] - 2026-06-10
 
 ### Added
