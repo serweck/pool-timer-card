@@ -4,6 +4,28 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-06-10
+
+### Changed
+- **Configurable quick actions**: replace hardcoded Flocculant/Treatment with
+  unlimited user-defined actions. Each action has a name, duration, icon,
+  and "after" behavior (lock OFF, return to mode, or load preset).
+- Actions automatically wrap to fit the card width.
+
+### Added
+- `quick_actions` config array with format:
+  ```yaml
+  quick_actions:
+    - name: "Flocculant"
+      hours: 2
+      icon: "🌀"
+      after: "OFF"           # OFF, Auto, or preset name
+  ```
+
+### Deprecated
+- `flocculant_hours` and `product_hours` (still supported for backward
+  compatibility, but use `quick_actions` for new setups).
+
 ## [2.4.0] - 2026-06-10
 
 ### Changed
@@ -96,6 +118,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.5.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.5.0
 [2.4.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.4.0
 [2.3.1]: https://github.com/serweck/pool-timer-card/releases/tag/v2.3.1
 [2.3.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.3.0
