@@ -270,6 +270,8 @@ class PoolTimerCard extends HTMLElement {
     this._hass = hass;
     // Detect language
     this._lang = (hass.language || hass.locale?.language || 'en');
+    // Initialize select state flag
+    if (!this._selectOpen) this._selectOpen = false;
 
     // Sync mode from helper (other automations may change it)
     const modeState = hass.states[this._config.mode_entity];
@@ -318,9 +320,9 @@ class PoolTimerCard extends HTMLElement {
       } catch (_) { /* ignore malformed state */ }
     }
 
-    // Avoid re-rendering (and rebuilding the DOM) in the middle of a drag,
-    // which would break drag-painting across segments.
-    if (!this._dragging) this._render();
+    // Avoid re-rendering during drag or while a select is open
+    // (which would close the dropdown and break interactions)
+    if (!this._dragging && !this._selectOpen) this._render();
   }
 
   static getConfigElement() {
@@ -1115,16 +1117,15 @@ class PoolTimerCard extends HTMLElement {
 
         /* Mode selector — dropdown */
         .mode-select {
-          display: block;
+          display: inline-block;
           width: auto;
-          max-width: 200px;
-          margin: 14px auto 0;
-          padding: 8px 14px;
-          border-radius: 10px;
+          min-width: 90px;
+          padding: 7px 12px;
+          border-radius: 8px;
           border: 1.5px solid ${COLORS.border};
           background: ${COLORS.modeInactive};
           color: ${COLORS.textPrimary};
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
         }
@@ -1143,16 +1144,15 @@ class PoolTimerCard extends HTMLElement {
 
         /* Preset selector — dropdown */
         .preset-select {
-          display: block;
-          width: 100%;
-          max-width: 200px;
-          margin: 8px auto 0;
-          padding: 8px 14px;
-          border-radius: 10px;
+          display: inline-block;
+          width: auto;
+          min-width: 100px;
+          padding: 7px 12px;
+          border-radius: 8px;
           border: 1.5px solid ${COLORS.border};
           background: ${COLORS.modeInactive};
           color: ${COLORS.textPrimary};
-          font-size: 14px;
+          font-size: 13px;
           font-weight: 600;
           cursor: pointer;
         }
@@ -1202,6 +1202,15 @@ class PoolTimerCard extends HTMLElement {
           color: ${COLORS.textSecondary};
           margin: 14px 0 6px;
           opacity: 0.7;
+        }
+        .controls-row {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          margin-top: 14px;
+          margin-bottom: 12px;
         }
         .chip-bar {
           display: flex;
@@ -1351,15 +1360,11 @@ class PoolTimerCard extends HTMLElement {
             ${nextChangeText ? `<div class="info-next">${nextChangeText}</div>` : ''}
           </div>
 
-          ${modeHTML}
-
-          ${presetsHTML ? `
-          <div class="section-label">${t('presets', lang)}</div>
-          ${presetsHTML}` : ''}
-
-          ${actionsHTML ? `
-          <div class="section-label">${t('actions', lang)}</div>
-          <div class="chip-bar">${actionsHTML}</div>` : ''}
+          <div class="controls-row">
+            ${modeHTML}
+            ${presetsHTML}
+            ${actionsHTML ? `<div class="chip-bar">${actionsHTML}</div>` : ''}
+          </div>
 
           ${bannerHTML}
         </div>
@@ -1381,6 +1386,9 @@ class PoolTimerCard extends HTMLElement {
       modeSelect.addEventListener('change', (e) => {
         this._setMode(e.currentTarget.value);
       });
+      // Prevent re-renders while the dropdown is open
+      modeSelect.addEventListener('focus', () => { this._selectOpen = true; });
+      modeSelect.addEventListener('blur', () => { this._selectOpen = false; });
     }
     root.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -1402,6 +1410,9 @@ class PoolTimerCard extends HTMLElement {
           this._render();
         }
       });
+      // Prevent re-renders while the dropdown is open
+      presetSelect.addEventListener('focus', () => { this._selectOpen = true; });
+      presetSelect.addEventListener('blur', () => { this._selectOpen = false; });
     }
 
     // Quick-action buttons (flocculant / product)
