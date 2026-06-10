@@ -515,31 +515,26 @@ class PoolTimerCard extends HTMLElement {
     // Check if a timed action is running
     if (typeof this._action === 'number') {
       const action = this._config.quick_actions?.[this._action];
-      if (!action) {
-        this._action = null;
-        return null;
+      if (action && now < this._actionUntil) {
+        return 'on';                       // action still circulating
       }
-      if (now < this._actionUntil) return 'on';
-      // Action finished -> apply the "after" behavior
-      if (action.after === 'OFF') {
-        // Lock OFF (settling state)
-        this._action = 'settling';
+      // Action finished (or no longer valid) -> apply its "after" behavior,
+      // then FALL THROUGH to the base mode/schedule below. We must never
+      // return null here: _evaluateSchedule would then try to drive the pump
+      // to `null`, which never matches 'on'/'off' and spams service calls.
+      if (action && action.after === 'OFF') {
+        this._action = 'settling';         // lock OFF until the user resumes
         this._actionUntil = 0;
         this._saveState();
         return 'off';
-      } else if (action.after === 'Auto') {
-        this._action = null;
-        this._actionUntil = 0;
-        this._saveState();
-        return null;  // Let schedule evaluation take over
-      } else {
-        // Return to preset (or treat as Auto if preset not found)
-        this._action = null;
-        this._actionUntil = 0;
-        this._preset = action.after;
-        this._saveState();
-        return null;
       }
+      if (action && action.after && action.after !== 'Auto') {
+        this._preset = action.after;       // return to a named preset
+      }
+      this._action = null;
+      this._actionUntil = 0;
+      this._saveState();
+      // fall through
     } else if (this._action === 'settling') {
       return 'off';
     }
@@ -566,6 +561,9 @@ class PoolTimerCard extends HTMLElement {
 
   /* ----- retry with exponential backoff --------------------------- */
   _callServiceWithRetry(targetState) {
+    // Safety guard: only ever drive the switch to a real on/off state.
+    // A null/undefined target would never match and would spam services.
+    if (targetState !== 'on' && targetState !== 'off') return;
     this._targetSwitchState = targetState;
     this._retryCount = 0;
     this._retryState = 'retrying';
@@ -936,7 +934,8 @@ class PoolTimerCard extends HTMLElement {
       nextChangeText = t('no_change', lang);
     }
     // While a timed action overrides the schedule, the "next change" hint is misleading.
-    if (this._action) nextChangeText = '';
+    // (_action can be 0 — the first action — so check against null explicitly.)
+    if (this._action != null) nextChangeText = '';
 
     /* ---- helper auto-setup banner ---- */
     const issues = this._setupIssues();
@@ -1909,7 +1908,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.6.2 ',
+  '%c POOL-TIMER-CARD %c v2.6.3 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

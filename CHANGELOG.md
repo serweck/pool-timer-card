@@ -4,6 +4,27 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.6.3] - 2026-06-10
+
+### Fixed
+- **Home Assistant freezing / unresponsive**: when a quick action with
+  `after: Auto` (the default for "Treatment") or `after: <preset>` finished,
+  `_computeDesiredState()` returned `null`. `_evaluateSchedule()` then tried to
+  drive the pump to `null`, which never matches `on`/`off`, firing an endless
+  storm of `switch.turn_off` + retry service calls that hammered HA. The
+  function now always returns `on`/`off`, falling through to the mode/schedule
+  after an action expires.
+- Added a guard in `_callServiceWithRetry()` so a non-`on`/`off` target can
+  never spam services again.
+- Fixed the "next change" hint showing while the first action (index `0`) was
+  active (`if (this._action)` is falsy for `0`).
+
+## [2.6.2] - 2026-06-10
+
+### Fixed
+- Icon-only actions: a blank action name was replaced with the word "Action"
+  in `_parseQuickActions`. An empty name now stays empty so only the icon shows.
+
 ## [2.6.1] - 2026-06-10
 
 ### Fixed
@@ -144,6 +165,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   / OFF modes, real-time needle, exponential-backoff retry, English/Spanish i18n,
   HACS support and a visual config editor.
 
+[2.6.3]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.3
+[2.6.2]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.2
 [2.6.1]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.1
 [2.6.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.6.0
 [2.5.0]: https://github.com/serweck/pool-timer-card/releases/tag/v2.5.0
