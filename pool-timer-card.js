@@ -1222,6 +1222,12 @@ class PoolTimerCard extends HTMLElement {
           max-width: 380px;
           margin: 0 auto;
           aspect-ratio: 1;
+          /* touch-action on SVG children (<path>/<svg>) is unreliable in the
+             Android WebView (Chromium ignores it on SVG). Declaring pan-y on
+             this HTML wrapper is what actually lets a vertical swipe scroll the
+             page; the pointer handlers still detect a horizontal drag/tap to
+             edit. */
+          touch-action: pan-y;
         }
         .dial-svg {
           width: 100%;

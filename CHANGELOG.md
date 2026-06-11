@@ -4,6 +4,17 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.6] - 2026-06-11
+
+### Fixed
+- **Android app: vertical scroll over the dial (root cause)**: `touch-action`
+  was only set on the SVG (`<svg>` / `<path>`), which the Android WebView
+  (Chromium) does not reliably honor on SVG elements — so a vertical swipe over
+  the dial never started a page scroll. Moved `touch-action: pan-y` onto the
+  HTML `.dial-container` wrapper, which is honored. Combined with the gesture
+  intent detection from 2.8.5 (tap / horizontal = edit, vertical = scroll),
+  swiping past the card now scrolls on Android (and iOS).
+
 ## [2.8.5] - 2026-06-11
 
 ### Fixed
