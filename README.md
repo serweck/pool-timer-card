@@ -267,9 +267,24 @@ corner_actions:
 - `name` — button label / tooltip (required)
 - `icon` — emoji for the button (required)
 - `position` — corner position (required): `"tl"` / `"top-left"`, `"tr"` / `"top-right"`, `"bl"` / `"bottom-left"`, `"br"` / `"bottom-right"`
-- `service` — HA service domain: `switch`, `light`, `automation`, `script`, etc.
+- `service` — HA service domain: `switch`, `light`, `button`, `script`, `scene`, `automation`, etc.
 - `entity_id` — the entity to control (required)
-- `action` — what to do: `toggle`, `turn_on`, `turn_off`
+- `action` — what to do: `toggle`, `turn_on`, `turn_off`, `press` (for `button` entities), `trigger` (for automations)
+
+**Pressing a button** (e.g. a one-shot "start pool robot" `button` entity): set
+`service: button` and `action: press` (the card sends `button.press`). `button`
+and `scene` are normalized automatically, so even if the action is left at its
+default they still fire correctly (`button.press` / `scene.turn_on`).
+
+```yaml
+corner_actions:
+  - name: "Start Robot"
+    icon: "🤖"
+    position: "bottom-right"
+    service: "button"
+    entity_id: "button.pool_robot_start"
+    action: "press"
+```
 
 **Visual feedback:**
 - Default: icon only, subtle shadow

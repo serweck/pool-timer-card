@@ -852,12 +852,16 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
-  // Execute a corner action (quick toggle, no timer).
+  // Execute a corner action (quick toggle / button press, no timer).
   _callCornerAction(actionIdx) {
     const action = this._config.corner_actions?.[actionIdx];
     if (!action || !action.entity_id) return;
-    const service = `${action.service}/${action.action}`;
-    this._hass?.callService(action.service, action.action, {
+    // Domains that only support a single activation verb: normalize so the call
+    // works even if the action dropdown was left at its default (e.g. a button
+    // must be pressed, not toggled).
+    const domainVerb = { button: 'press', scene: 'turn_on' };
+    const verb = domainVerb[action.service] || action.action || 'toggle';
+    this._hass?.callService(action.service, verb, {
       entity_id: action.entity_id,
     });
   }
@@ -1818,8 +1822,8 @@ class PoolTimerCardEditor extends HTMLElement {
       ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
     ];
     const posAlias = { 'top-left': 'tl', 'top-right': 'tr', 'bottom-left': 'bl', 'bottom-right': 'br' };
-    const services = ['switch', 'light', 'fan', 'input_boolean', 'script', 'automation', 'scene'];
-    const acts = [['toggle', 'Toggle'], ['turn_on', 'On'], ['turn_off', 'Off']];
+    const services = ['switch', 'light', 'fan', 'input_boolean', 'button', 'script', 'automation', 'scene'];
+    const acts = [['toggle', 'Toggle'], ['turn_on', 'On'], ['turn_off', 'Off'], ['press', 'Press'], ['trigger', 'Trigger']];
     const header = `
       <div class="list-header">
         <span>Icon · Name · Position — then Entity · Service · Action</span>
@@ -2234,7 +2238,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.9.0 ',
+  '%c POOL-TIMER-CARD %c v2.9.1 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

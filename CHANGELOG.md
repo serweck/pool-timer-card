@@ -4,6 +4,16 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.1] - 2026-06-11
+
+### Added
+- **Corner actions can press buttons**: added the `button` service domain and
+  `press` / `trigger` actions to the editor, so a corner button can fire a
+  one-shot `button` entity (e.g. *start pool robot*), a `scene`, or `automation`.
+  `_callCornerAction` normalizes single-verb domains (`button` → `press`,
+  `scene` → `turn_on`) so they work even if the action dropdown is left at its
+  default. (Also removed a dead variable in `_callCornerAction`.)
+
 ## [2.9.0] - 2026-06-11
 
 ### Added
