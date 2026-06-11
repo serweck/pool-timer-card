@@ -4,6 +4,17 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.5] - 2026-06-11
+
+### Fixed
+- **Mobile scroll still blocked over the dial (real fix)**: 2.8.4 only freed the
+  center/gaps, but the segments fill most of the ring, so a swipe that lands on a
+  segment was still stuck. The dial now detects gesture intent: a **tap** or a
+  **horizontal drag** edits the schedule, while a **vertical drag** is left to
+  the browser as a page scroll (segments use `touch-action: pan-y`, and the edit
+  is deferred on touch until ~8px of movement reveals the direction). Mouse
+  behaviour (instant click + drag-paint) is unchanged.
+
 ## [2.8.4] - 2026-06-11
 
 ### Fixed

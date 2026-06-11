@@ -228,13 +228,14 @@ class PoolTimerCard extends HTMLElement {
     this._scheduleInterval = null;
     this._dragging = false;
     this._dragValue = null;
+    this._pendingSeg = null;      // touch press awaiting tap/drag/scroll intent
     this._lang = 'en';
     this._initialized = false;
     this._lastSaveTime = 0;
     this._rootEventsBound = false;
     this._saveDebounce = null;
     // Stable reference so we can add/remove the window-level release listener.
-    this._boundPointerUp = () => this._onGlobalPointerUp();
+    this._boundPointerUp = (e) => this._onGlobalPointerUp(e);
     // Presets & timed actions
     this._preset = null;          // name of the active preset
     this._action = null;          // null | 'flocculant' | 'product' | 'settling'
@@ -692,34 +693,78 @@ class PoolTimerCard extends HTMLElement {
   _onDialPointerDown(e) {
     const seg = e.target && e.target.closest ? e.target.closest('.seg') : null;
     if (!seg || seg.dataset.idx == null) return;
-    e.preventDefault();
     // Release the implicit pointer capture so pointermove can hit-test OTHER
     // segments during a drag (otherwise all events stay on this one element).
     if (e.pointerId != null && seg.releasePointerCapture) {
       try { seg.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     }
     const idx = parseInt(seg.dataset.idx, 10);
-    this._dragging = true;
-    this._dragValue = !this._segments[idx];
-    this._lastSaveTime = Date.now();
-    this._applySegment(idx, this._dragValue);
-    this._scheduleSave();
-  }
+    const value = !this._segments[idx];
 
-  _onDialPointerMove(e) {
-    if (!this._dragging) return;
-    e.preventDefault();
-    const idx = this._segmentIndexAt(e.clientX, e.clientY);
-    if (idx >= 0 && this._segments[idx] !== this._dragValue) {
-      this._applySegment(idx, this._dragValue);
+    // Touch: defer the edit until the gesture's intent is known. A tap or a
+    // sideways drag edits; a vertical drag is a page scroll and must be left to
+    // the browser (see _onDialPointerMove). Mouse: commit immediately so
+    // click/drag-paint feels instant.
+    if (e.pointerType === 'touch') {
+      this._pendingSeg = { idx, value, x: e.clientX, y: e.clientY };
+      this._dragging = false;
+    } else {
+      e.preventDefault();
+      this._pendingSeg = null;
+      this._dragging = true;
+      this._dragValue = value;
+      this._lastSaveTime = Date.now();
+      this._applySegment(idx, value);
       this._scheduleSave();
     }
   }
 
-  _onGlobalPointerUp() {
-    if (!this._dragging) return;
+  _onDialPointerMove(e) {
+    // Active paint drag → keep editing across segments.
+    if (this._dragging) {
+      if (e.cancelable) e.preventDefault();
+      const idx = this._segmentIndexAt(e.clientX, e.clientY);
+      if (idx >= 0 && this._segments[idx] !== this._dragValue) {
+        this._applySegment(idx, this._dragValue);
+        this._scheduleSave();
+      }
+      return;
+    }
+    // Touch gesture still undecided: tap / horizontal-edit vs. vertical-scroll.
+    const p = this._pendingSeg;
+    if (!p) return;
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;   // below threshold, wait
+    if (Math.abs(dy) > Math.abs(dx)) {
+      // Vertical intent → abandon the edit and let the browser scroll.
+      this._pendingSeg = null;
+      return;
+    }
+    // Horizontal intent → commit to a paint drag from the pressed segment.
+    if (e.cancelable) e.preventDefault();
+    this._dragging = true;
+    this._dragValue = p.value;
+    this._pendingSeg = null;
+    this._lastSaveTime = Date.now();
+    this._applySegment(p.idx, p.value);
+    this._scheduleSave();
+  }
+
+  _onGlobalPointerUp(e) {
+    // A touch press that never became a drag and wasn't abandoned to scroll is
+    // a tap → toggle the pressed segment now.
+    if (!this._dragging) {
+      const p = this._pendingSeg;
+      this._pendingSeg = null;
+      if (!p || (e && e.type === 'pointercancel')) return;
+      this._dragValue = p.value;
+      this._lastSaveTime = Date.now();
+      this._applySegment(p.idx, p.value);
+    }
     this._dragging = false;
     this._dragValue = null;
+    this._pendingSeg = null;
     if (this._saveDebounce) { clearTimeout(this._saveDebounce); this._saveDebounce = null; }
     // User edited manually → if the result happens to match a preset exactly,
     // adopt that preset's name; otherwise mark the schedule as Custom (null).
@@ -1238,10 +1283,11 @@ class PoolTimerCard extends HTMLElement {
           cursor: pointer;
           transition: filter 0.15s ease, transform 0.1s ease;
           filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
-          /* Capture taps/drags on a segment instead of letting the browser
-             scroll. touch-action is evaluated at the element where the touch
-             STARTS, so this only affects gestures that begin on a segment. */
-          touch-action: none;
+          /* Allow vertical page scroll to start even from a segment; the
+             pointer handlers detect a horizontal drag / tap to edit instead.
+             pan-y lets the browser own vertical gestures (it fires
+             pointercancel, ending any pending edit). */
+          touch-action: pan-y;
         }
         .seg--on {
           filter: drop-shadow(0 2px 4px rgba(74,144,217,0.4));
