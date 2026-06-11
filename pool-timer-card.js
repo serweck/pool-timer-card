@@ -721,10 +721,11 @@ class PoolTimerCard extends HTMLElement {
     this._dragging = false;
     this._dragValue = null;
     if (this._saveDebounce) { clearTimeout(this._saveDebounce); this._saveDebounce = null; }
-    // User edited manually → clear preset and mark as Custom
-    this._preset = null;
+    // User edited manually → if the result happens to match a preset exactly,
+    // adopt that preset's name; otherwise mark the schedule as Custom (null).
+    this._preset = this._findMatchingPreset();
     this._saveSchedule();       // authoritative, immediate write
-    this._saveState();          // persist the cleared preset
+    this._saveState();          // persist the preset/custom state
     this._evaluateSchedule();   // apply the new schedule to the pump now
     this._render();             // safe to fully refresh now the gesture ended
   }
@@ -742,13 +743,31 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
+  // Compute the 48-segment boolean array a preset represents, from either its
+  // explicit `segments` bitstring or its `schedule` ranges.
+  _segmentsForPreset(preset) {
+    if (!preset) return null;
+    return preset.segments
+      ? String(preset.segments).split('').map(c => c === '1')
+      : this._rangesToSegments(preset.schedule);
+  }
+
+  // Return the name of the preset whose schedule matches the current segments
+  // exactly, or null if none match (i.e. the schedule is genuinely "Custom").
+  _findMatchingPreset() {
+    for (const p of (this._config.presets || [])) {
+      const segs = this._segmentsForPreset(p);
+      if (!segs || segs.length !== this._segments.length) continue;
+      if (segs.every((v, i) => !!v === !!this._segments[i])) return p.name;
+    }
+    return null;
+  }
+
   // Load a preset's schedule and switch to Auto so it takes effect.
   _selectPreset(name) {
     const preset = (this._config.presets || []).find(p => p.name === name);
     if (!preset) return;
-    this._segments = preset.segments
-      ? String(preset.segments).split('').map(c => c === '1')
-      : this._rangesToSegments(preset.schedule);
+    this._segments = this._segmentsForPreset(preset);
     this._preset = name;
     this._mode = 'Auto';
     this._action = null;
@@ -1163,6 +1182,10 @@ class PoolTimerCard extends HTMLElement {
           width: 100%;
           height: 100%;
           display: block;
+          /* Touches that start on non-segment areas (center knob, gaps, ticks)
+             scroll the page vertically. Segments override this with
+             touch-action: none to keep tap/drag editing working. */
+          touch-action: pan-y;
         }
 
         /* Corner action buttons */
@@ -1215,11 +1238,10 @@ class PoolTimerCard extends HTMLElement {
           cursor: pointer;
           transition: filter 0.15s ease, transform 0.1s ease;
           filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
-        }
-
-        /* Allow vertical scroll while preserving custom interactions */
-        .dial-svg {
-          touch-action: manipulation;
+          /* Capture taps/drags on a segment instead of letting the browser
+             scroll. touch-action is evaluated at the element where the touch
+             STARTS, so this only affects gestures that begin on a segment. */
+          touch-action: none;
         }
         .seg--on {
           filter: drop-shadow(0 2px 4px rgba(74,144,217,0.4));

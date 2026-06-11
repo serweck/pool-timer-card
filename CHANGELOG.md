@@ -4,6 +4,22 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.4] - 2026-06-11
+
+### Fixed
+- **Mobile scrolling blocked over the dial**: dragging the dashboard past the
+  card on touch devices got stuck because the dial captured every gesture. Now
+  `touch-action` is scoped — only gestures that *start on a segment* edit the
+  schedule (`touch-action: none`), while touches on the rest of the dial
+  (center knob, ticks, gaps) scroll the page vertically (`touch-action: pan-y`).
+  Editing segments still works in any mode, including OFF.
+
+### Changed
+- **Manual edits that match a preset adopt that preset**: after editing the
+  dial by hand, if the resulting schedule matches a configured preset exactly,
+  the preset selector now shows that preset instead of falling back to
+  "Custom".
+
 ## [2.8.3] - 2026-06-10
 
 ### Fixed
