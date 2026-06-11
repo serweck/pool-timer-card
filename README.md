@@ -114,6 +114,21 @@ presets:
   - name: Invierno
     schedule:
       - { start: "10:00", end: "13:00" }
+
+# Corner quick-toggle buttons (optional — omit if you don't need them)
+corner_actions:
+  - name: "Pool Lights"
+    icon: "💡"
+    position: "top-right"          # tl, tr, bl, br (or top-left, top-right, …)
+    service: "light"
+    entity_id: "light.pool_lights"
+    action: "toggle"
+  - name: "Start Robot"
+    icon: "🤖"
+    position: "bottom-right"
+    service: "button"              # press a one-shot button entity
+    entity_id: "button.pool_robot_start"
+    action: "press"
 ```
 
 ### Configuration Options
@@ -129,6 +144,7 @@ presets:
 | `flocculant_hours` | number | ❌ | `2` | (Legacy) Hours for flocculant action |
 | `product_hours` | number | ❌ | `3` | (Legacy) Hours for treatment action |
 | `presets` | list | ❌ | Verano / Invierno | Named schedules; each has `name` + `schedule` ranges |
+| `corner_actions` | list | ❌ | — | Corner quick-toggle buttons; each has `name`, `icon`, `position`, `service`, `entity_id`, `action` (see [Corner Actions](#corner-actions-quick-toggles)) |
 | `schedule` | list | ❌ | — | One-time default schedule (used only when the schedule helper is empty) |
 
 A preset can also be given as a raw 48-char string instead of ranges:
