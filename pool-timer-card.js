@@ -1811,6 +1811,51 @@ class PoolTimerCardEditor extends HTMLElement {
     `).join('');
   }
 
+  _renderCornerActions() {
+    const corners = this._config.corner_actions || [];
+    const positions = [
+      ['tl', 'Top-left'], ['tr', 'Top-right'],
+      ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
+    ];
+    const posAlias = { 'top-left': 'tl', 'top-right': 'tr', 'bottom-left': 'bl', 'bottom-right': 'br' };
+    const services = ['switch', 'light', 'fan', 'input_boolean', 'script', 'automation', 'scene'];
+    const acts = [['toggle', 'Toggle'], ['turn_on', 'On'], ['turn_off', 'Off']];
+    const header = `
+      <div class="list-header">
+        <span>Icon · Name · Position — then Entity · Service · Action</span>
+      </div>
+    `;
+    return header + corners.map((c, idx) => {
+      const pos = posAlias[c.position] || c.position || 'tl';
+      return `
+      <div class="list-item corner-item">
+        <div class="corner-row">
+          <div class="name-cell">
+            <input type="text" class="corner-icon" data-idx="${idx}" value="${c.icon || '◆'}"
+              placeholder="💡" maxlength="3" />
+            <input type="text" class="corner-name" data-idx="${idx}" value="${c.name || ''}"
+              placeholder="Light" />
+          </div>
+          <select class="corner-position" data-idx="${idx}">
+            ${positions.map(([v, l]) => `<option value="${v}" ${pos === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
+        </div>
+        <div class="corner-row">
+          <input type="text" class="corner-entity" data-idx="${idx}" value="${c.entity_id || ''}"
+            placeholder="switch.pool_light" />
+          <select class="corner-service" data-idx="${idx}">
+            ${services.map(s => `<option value="${s}" ${c.service === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <select class="corner-action" data-idx="${idx}">
+            ${acts.map(([v, l]) => `<option value="${v}" ${c.action === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+    }).join('');
+  }
+
   _render() {
     const lang = this._hass?.language || 'en';
     const actions = this._config.quick_actions || DEFAULT_QUICK_ACTIONS;
@@ -1875,6 +1920,31 @@ class PoolTimerCardEditor extends HTMLElement {
           gap: 6px;
           align-items: center;
         }
+
+        /* Corner actions: two rows per item (name/position, then target). */
+        .corner-item {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .corner-row {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+        }
+        .corner-row .name-cell { flex: 1; }
+        .corner-row .corner-entity { flex: 1; min-width: 0; }
+        .corner-position { flex: 0 0 104px; }
+        .corner-service { flex: 0 0 96px; }
+        .corner-action { flex: 0 0 88px; }
+        .corner-item .btn-delete { flex: 0 0 28px; }
+        .corner-item .corner-icon {
+          width: 38px;
+          flex: 0 0 38px;
+          padding: 6px 2px;
+          text-align: center;
+        }
+        .corner-item .corner-name { min-width: 0; flex: 1; }
 
         .list-header {
           padding: 4px 8px;
@@ -1994,6 +2064,15 @@ class PoolTimerCardEditor extends HTMLElement {
           </div>
           <button class="btn-add" id="btn-add-preset">+ Add Preset</button>
         </div>
+
+        <!-- Corner Actions -->
+        <div class="section">
+          <div class="section-title">Corner Actions</div>
+          <div id="corner-list">
+            ${this._renderCornerActions()}
+          </div>
+          <button class="btn-add" id="btn-add-corner">+ Add Corner Action</button>
+        </div>
       </div>
     `;
 
@@ -2096,6 +2175,46 @@ class PoolTimerCardEditor extends HTMLElement {
         this._updateConfig({ presets });
       });
     }
+
+    // Corner Actions - edit
+    root.querySelectorAll('.corner-icon, .corner-name, .corner-position, .corner-entity, .corner-service, .corner-action').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const corners = [...(this._config.corner_actions || [])];
+        const fieldMap = {
+          'corner-icon': 'icon', 'corner-name': 'name', 'corner-position': 'position',
+          'corner-entity': 'entity_id', 'corner-service': 'service', 'corner-action': 'action',
+        };
+        const field = fieldMap[e.target.className];
+        if (!field || !corners[idx]) return;
+        corners[idx] = { ...corners[idx], [field]: e.target.value };
+        this._updateConfig({ corner_actions: corners });
+      });
+    });
+
+    // Corner Actions - delete (event delegation, capture phase)
+    const cornerList = root.getElementById('corner-list');
+    if (cornerList) {
+      cornerList.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-delete') && e.target.closest('.corner-item')) {
+          e.stopPropagation();
+          const idx = parseInt(e.target.dataset.idx, 10);
+          const corners = [...(this._config.corner_actions || [])];
+          corners.splice(idx, 1);
+          this._updateConfig({ corner_actions: corners });
+        }
+      }, true);
+    }
+
+    // Corner Actions - add
+    const addCornerBtn = root.getElementById('btn-add-corner');
+    if (addCornerBtn) {
+      addCornerBtn.addEventListener('click', () => {
+        const corners = [...(this._config.corner_actions || [])];
+        corners.push({ name: 'Light', icon: '💡', position: 'tl', service: 'switch', entity_id: '', action: 'toggle' });
+        this._updateConfig({ corner_actions: corners });
+      });
+    }
   }
 }
 
@@ -2115,7 +2234,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.8.8 ',
+  '%c POOL-TIMER-CARD %c v2.9.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

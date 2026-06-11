@@ -235,7 +235,9 @@ they execute immediately.
 
 ### Configuration
 
-Define corner actions:
+You can configure corner actions either from the **visual editor** (Edit card →
+**Corner Actions** section → *+ Add Corner Action*, then set icon, name, corner,
+entity, service and action per row) or directly in YAML:
 
 ```yaml
 corner_actions:

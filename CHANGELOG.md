@@ -4,6 +4,16 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.0] - 2026-06-11
+
+### Added
+- **Corner Actions are now configurable from the visual editor**. The card editor
+  has a new **Corner Actions** section: add/remove entries and set icon, name,
+  corner position (top-left / top-right / bottom-left / bottom-right), entity,
+  service domain and action (toggle / on / off) per row — no YAML required.
+  Mirrors the existing Quick Actions / Presets editors and writes the same
+  `corner_actions:` config.
+
 ## [2.8.8] - 2026-06-11
 
 ### Docs / Tooling
