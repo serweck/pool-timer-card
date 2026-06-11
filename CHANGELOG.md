@@ -4,6 +4,16 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.7] - 2026-06-11
+
+### Fixed
+- **Scroll over the card finally works — the actual root cause**: the `.card`
+  wrapper (which covers the whole card) had `touch-action: none`. Because the
+  effective touch-action is the **intersection** of every ancestor's value, that
+  `none` overrode the `pan-y` set on inner elements in 2.8.4–2.8.6 and blocked
+  page scrolling anywhere over the card. Changed `.card` to `touch-action: pan-y`.
+  Vertical swipes now scroll; tap / horizontal drag still edits the dial.
+
 ## [2.8.6] - 2026-06-11
 
 ### Fixed

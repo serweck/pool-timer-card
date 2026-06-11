@@ -1164,7 +1164,12 @@ class PoolTimerCard extends HTMLElement {
           font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
           user-select: none;
           -webkit-user-select: none;
-          touch-action: none;
+          /* MUST stay pan-y (not none): the effective touch-action is the
+             INTERSECTION of all ancestors, so 'none' here would override the
+             pan-y on .dial-container and block page scrolling over the entire
+             card. Vertical swipes scroll; the dial's pointer handlers detect a
+             horizontal drag / tap to edit. */
+          touch-action: pan-y;
         }
         .header {
           display: flex;
