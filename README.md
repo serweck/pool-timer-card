@@ -7,7 +7,7 @@ A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Ins
 ## Features
 
 - 🪄 **One-click setup** — auto-creates the required helpers (admin) if missing, and fixes a too-small `max`
-- 🎛️ **48 interactive segments** (30 min each) — click or drag to schedule
+- 🎛️ **48 interactive segments** (30 min each) — tap or drag to schedule (on touch devices a vertical swipe scrolls the page, a horizontal drag paints segments)
 - ⏰ **Real-time clock needle** — auto-updates to show current time
 - 🔄 **3 operation modes**: Auto / Perm / OFF
 - 🗂️ **Presets** — one tap to load a full schedule (e.g. Summer / Winter), fully configurable
@@ -157,9 +157,23 @@ Use the **Presets dropdown** (when you have presets configured) to:
 - **Select a preset** to load its full 48-segment schedule and switch to **Auto**
 - **Choose "Custom"** to edit segments manually on the dial
 
-When you manually edit the dial, the preset automatically switches to **Custom** so
-you know you're in edit mode. Presets are defined in the card YAML (`presets:`)
-and editing does not modify the original preset definition.
+When you manually edit the dial, the selector switches to **Custom** so you know
+you're in edit mode — **unless** your edit happens to match a configured preset
+exactly, in which case the selector snaps to that preset automatically. Presets
+are defined in the card YAML (`presets:`) and editing does not modify the
+original preset definition.
+
+### Editing on touch devices
+
+To keep dashboard scrolling smooth, the dial distinguishes gesture intent:
+
+| Gesture | Action |
+|---------|--------|
+| **Tap** a segment | Toggle that half-hour on/off |
+| **Horizontal drag** across the ring | Paint multiple segments |
+| **Vertical swipe** | Scrolls the page (does **not** edit) |
+
+Editing works in **any** mode, including **OFF**.
 
 ## Quick Actions
 

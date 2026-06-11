@@ -4,6 +4,18 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.8.8] - 2026-06-11
+
+### Docs / Tooling
+- **README** updated for the touch gesture model (tap / horizontal drag to edit,
+  vertical swipe to scroll) and the new preset-matching behaviour (a manual edit
+  that matches a preset adopts it instead of showing "Custom").
+- **Console banner** version is no longer hardcoded out of date (was stuck at
+  `v2.8.3`). `update-version.ps1` now syncs **both** `hacs.json` and the JS
+  banner from the latest git tag, and replaces only the version substring so it
+  no longer reformats `hacs.json`. The banner is the quickest way to confirm
+  which version the browser/app actually loaded (see Troubleshooting).
+
 ## [2.8.7] - 2026-06-11
 
 ### Fixed
