@@ -1216,6 +1216,11 @@ class PoolTimerCard extends HTMLElement {
           transition: filter 0.15s ease, transform 0.1s ease;
           filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
         }
+
+        /* Allow vertical scroll while preserving custom interactions */
+        .dial-svg {
+          touch-action: manipulation;
+        }
         .seg--on {
           filter: drop-shadow(0 2px 4px rgba(74,144,217,0.4));
         }
