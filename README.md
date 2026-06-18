@@ -53,12 +53,19 @@ Create these helpers in **Settings → Devices & Services → Helpers**.
 | Name | `pool_timer_schedule` |
 | Entity ID | `input_text.pool_timer_schedule` |
 | Max length | `255` (must be **at least 48**) |
-| Initial value | `000000000000000000000000000000000000000000000000` |
+| Initial value | **leave EMPTY** |
 
-> ⚠️ **Important:** the schedule is stored as a 48-character string. If the
+> ⚠️ **Important (length):** the schedule is stored as a 48-character string. If the
 > helper's **maximum length is below 48, Home Assistant silently rejects the
 > value** and the schedule will never save. Set it to `255` to be safe. You can
 > check the current limit in **Developer Tools → States** (the `max` attribute).
+>
+> ⛔ **Important (persistence — do NOT set an Initial value):** if a helper has an
+> *Initial value*, Home Assistant **resets it to that value on every restart**
+> instead of restoring the last value. Leaving it empty makes the helper **keep
+> its last value across restarts**. Setting an initial here was the cause of the
+> schedule resetting to all-off (and the mode reverting to Auto) after every
+> HA restart. The card seeds the schedule automatically on first use.
 
 ### 2. Mode storage (`input_select`)
 
@@ -67,7 +74,7 @@ Create these helpers in **Settings → Devices & Services → Helpers**.
 | Name | `pool_timer_mode` |
 | Entity ID | `input_select.pool_timer_mode` |
 | Options | `Auto`, `Perm`, `OFF` |
-| Initial value | `Auto` |
+| Initial value | **leave EMPTY** (do not set `Auto`; see warning above — otherwise the mode reverts to it on every restart) |
 
 ### 3. Action / preset state (`input_text`) — required for presets & actions
 
@@ -394,6 +401,15 @@ The card auto-detects your Home Assistant language and shows English or Spanish.
    `mode_entity` / `state_entity` in the card config).
 4. **Make sure you loaded the latest card** — open the browser console (F12) and
    confirm the `POOL-TIMER-CARD vX.Y.Z` banner; hard-refresh (Ctrl+Shift+R) if not.
+
+**Everything resets to defaults after restarting Home Assistant**
+
+This means one or more helpers have an **Initial value** set. HA resets a helper to
+its initial value on every restart instead of restoring the last value. Fix each helper:
+**Settings → Devices & Services → Helpers →** open `pool_timer_schedule`,
+`pool_timer_mode` (and `pool_timer_state`) **→ ⚙️ → clear the *Initial value* field**
+(leave it empty) → Save. After that they keep their last value across restarts. (Card
+v2.9.2+ also no longer overwrites the helper during the startup window.)
 
 **Presets or actions don't persist after a reload**
 

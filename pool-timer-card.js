@@ -342,14 +342,17 @@ class PoolTimerCard extends HTMLElement {
         }
       }
       this._initialized = true;
-    } else if (schedState && (schedState.state === '' || schedState.state === 'unknown' || schedState.state === 'unavailable') && !this._initialized) {
-      // Helper exists but is empty, initialize it with current default schedule
+    } else if (schedState && schedState.state === '' && !this._initialized) {
+      // Helper genuinely empty (first run only) -> seed once with the default schedule.
+      // IMPORTANT: do NOT treat 'unknown'/'unavailable' as empty. Those are transient
+      // states while HA is starting and the helper hasn't restored its value yet.
+      // Writing here clobbered the value the helper was about to restore, which is
+      // why the schedule reset to defaults on every HA restart.
       this._initialized = true;
       this._saveSchedule();
-    } else if (!schedState && !this._initialized) {
-      // If the helper is not found yet, mark initialized to prevent endless loops, but keep defaults
-      this._initialized = true;
     }
+    // 'unknown' / 'unavailable' / missing helper: do nothing and wait for a valid
+    // value to arrive. Keep the in-memory default only for display.
 
     // Sync preset + timed-action state (so a running action resumes after a
     // reload, and HA automations can drive it). Respect a short lockout after
@@ -2238,7 +2241,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.9.1 ',
+  '%c POOL-TIMER-CARD %c v2.9.2 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

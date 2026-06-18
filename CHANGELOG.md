@@ -4,6 +4,20 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.2] - 2026-06-18
+
+### Fixed
+- **Schedule/mode reset to defaults after every HA restart.** Two causes:
+  1. **Helpers configured with an *Initial value*** (48 zeros for the schedule, `Auto`
+     for the mode). Home Assistant resets a helper to its initial value on every restart
+     instead of restoring the last value. **Fix:** leave the *Initial value* empty so the
+     helpers restore their last value (README updated). The card seeds the schedule on
+     first use.
+  2. **The card overwrote the helper during startup.** While HA was starting, the helper
+     briefly read `unknown`/`unavailable`; the card treated that as "empty" and wrote the
+     default schedule over the value the helper was about to restore. Now the card only
+     seeds on a genuinely empty (`''`) helper and waits for transient states to resolve.
+
 ## [2.9.1] - 2026-06-11
 
 ### Added

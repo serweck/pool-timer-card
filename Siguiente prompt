@@ -1,0 +1,10 @@
+el componente esta configurado así:
+
+type: custom:pool-timer-card
+entity: switch.rele_piscina_bomba
+name: Pool Timer
+schedule_entity: input_text.pool_timer_schedule
+mode_entity: input_select.pool_timer_mode
+
+
+pero sigue sin rellenar el valor de input_text.pool_timer_schedule
