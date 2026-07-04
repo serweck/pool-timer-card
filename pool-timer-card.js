@@ -332,12 +332,22 @@ class PoolTimerCard extends HTMLElement {
     const schedState = hass.states[this._config.schedule_entity];
     const timeSinceLastSave = Date.now() - (this._lastSaveTime || 0);
 
+    if (schedState) {
+      console.log('[pool-timer-card] Schedule helper state:', {
+        state: schedState.state,
+        length: schedState.state?.length,
+        initialized: this._initialized,
+        timeSinceLastSave,
+      });
+    }
+
     if (schedState && schedState.state && schedState.state.length === SEGMENT_COUNT) {
       const newSegs = schedState.state.split('').map(c => c === '1');
       // Don't clobber local segments while the user is actively editing (_dragging),
       // nor inside the lockout window right after a manual save (_lastSaveTime).
       if (!this._dragging && timeSinceLastSave > 3000) {
         if (JSON.stringify(newSegs) !== JSON.stringify(this._segments)) {
+          console.log('[pool-timer-card] Loading schedule from helper');
           this._segments = newSegs;
         }
       }
@@ -348,6 +358,7 @@ class PoolTimerCard extends HTMLElement {
       // states while HA is starting and the helper hasn't restored its value yet.
       // Writing here clobbered the value the helper was about to restore, which is
       // why the schedule reset to defaults on every HA restart.
+      console.log('[pool-timer-card] Helper empty, saving defaults');
       this._initialized = true;
       this._saveSchedule();
     }
@@ -477,14 +488,23 @@ class PoolTimerCard extends HTMLElement {
     }
   }
 
-  _saveSchedule() {
+  async _saveSchedule() {
     if (!this._hass) return;
     const val = this._segments.map(s => (s ? '1' : '0')).join('');
-    this._lastSaveTime = Date.now(); // Record last manual change time
-    this._hass.callService('input_text', 'set_value', {
-      entity_id: this._config.schedule_entity,
-      value: val,
-    });
+    this._lastSaveTime = Date.now();
+    console.log('[pool-timer-card] Saving schedule:', val);
+    try {
+      await this._hass.callService('input_text', 'set_value', {
+        entity_id: this._config.schedule_entity,
+        value: val,
+      });
+      console.log('[pool-timer-card] Schedule saved successfully');
+      // Verify it was saved by checking the state
+      const schedState = this._hass.states[this._config.schedule_entity];
+      console.log('[pool-timer-card] Schedule state after save:', schedState?.state);
+    } catch (e) {
+      console.error('[pool-timer-card] Failed to save schedule:', e);
+    }
   }
 
   _loadMode() {
@@ -495,12 +515,16 @@ class PoolTimerCard extends HTMLElement {
     }
   }
 
-  _saveMode() {
+  async _saveMode() {
     if (!this._hass) return;
-    this._hass.callService('input_select', 'select_option', {
-      entity_id: this._config.mode_entity,
-      option: this._mode,
-    });
+    try {
+      await this._hass.callService('input_select', 'select_option', {
+        entity_id: this._config.mode_entity,
+        option: this._mode,
+      });
+    } catch (e) {
+      console.error('[pool-timer-card] Failed to save mode:', e);
+    }
   }
 
   // Convert a list of {start,end} time ranges into a 48-slot boolean array.
@@ -530,7 +554,7 @@ class PoolTimerCard extends HTMLElement {
   }
 
   // Persist the active preset + any running timed action as JSON in a helper.
-  _saveState() {
+  async _saveState() {
     if (!this._hass) return;
     this._lastStateSaveTime = Date.now();
     const payload = JSON.stringify({
@@ -542,10 +566,14 @@ class PoolTimerCard extends HTMLElement {
       // Lets a server-side blueprint enforce timing with the browser closed.
       after: this._currentAfter(),
     });
-    this._hass.callService('input_text', 'set_value', {
-      entity_id: this._config.state_entity,
-      value: payload,
-    });
+    try {
+      await this._hass.callService('input_text', 'set_value', {
+        entity_id: this._config.state_entity,
+        value: payload,
+      });
+    } catch (e) {
+      console.error('[pool-timer-card] Failed to save state:', e);
+    }
   }
 
   /* ----- desired-state computation (modes + timed actions) --------
@@ -884,12 +912,11 @@ class PoolTimerCard extends HTMLElement {
    * ---------------------------------------------------------------- */
   _helperDefs() {
     const titleize = (id) => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const zeros = new Array(SEGMENT_COUNT).fill('0').join('');
     const defs = [];
     const sched = this._config.schedule_entity;
     if (sched && sched.startsWith('input_text.')) {
       defs.push({ entity: sched, domain: 'input_text',
-        create: { name: titleize(sched.split('.')[1]), min: 0, max: 255, initial: zeros, mode: 'text' } });
+        create: { name: titleize(sched.split('.')[1]), min: 0, max: 255, initial: '', mode: 'text' } });
     }
     const mode = this._config.mode_entity;
     if (mode && mode.startsWith('input_select.')) {
