@@ -332,22 +332,12 @@ class PoolTimerCard extends HTMLElement {
     const schedState = hass.states[this._config.schedule_entity];
     const timeSinceLastSave = Date.now() - (this._lastSaveTime || 0);
 
-    if (schedState) {
-      console.log('[pool-timer-card] Schedule helper state:', {
-        state: schedState.state,
-        length: schedState.state?.length,
-        initialized: this._initialized,
-        timeSinceLastSave,
-      });
-    }
-
     if (schedState && schedState.state && schedState.state.length === SEGMENT_COUNT) {
       const newSegs = schedState.state.split('').map(c => c === '1');
       // Don't clobber local segments while the user is actively editing (_dragging),
       // nor inside the lockout window right after a manual save (_lastSaveTime).
       if (!this._dragging && timeSinceLastSave > 3000) {
         if (JSON.stringify(newSegs) !== JSON.stringify(this._segments)) {
-          console.log('[pool-timer-card] Loading schedule from helper');
           this._segments = newSegs;
         }
       }
@@ -358,7 +348,6 @@ class PoolTimerCard extends HTMLElement {
       // states while HA is starting and the helper hasn't restored its value yet.
       // Writing here clobbered the value the helper was about to restore, which is
       // why the schedule reset to defaults on every HA restart.
-      console.log('[pool-timer-card] Helper empty, saving defaults');
       this._initialized = true;
       this._saveSchedule();
     }
@@ -491,17 +480,12 @@ class PoolTimerCard extends HTMLElement {
   async _saveSchedule() {
     if (!this._hass) return;
     const val = this._segments.map(s => (s ? '1' : '0')).join('');
-    this._lastSaveTime = Date.now();
-    console.log('[pool-timer-card] Saving schedule:', val);
+    this._lastSaveTime = Date.now(); // Record last manual change time
     try {
       await this._hass.callService('input_text', 'set_value', {
         entity_id: this._config.schedule_entity,
         value: val,
       });
-      console.log('[pool-timer-card] Schedule saved successfully');
-      // Verify it was saved by checking the state
-      const schedState = this._hass.states[this._config.schedule_entity];
-      console.log('[pool-timer-card] Schedule state after save:', schedState?.state);
     } catch (e) {
       console.error('[pool-timer-card] Failed to save schedule:', e);
     }
@@ -912,21 +896,26 @@ class PoolTimerCard extends HTMLElement {
    * ---------------------------------------------------------------- */
   _helperDefs() {
     const titleize = (id) => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    // IMPORTANT: never set an `initial` value on these helpers. An input_text /
+    // input_select with an `initial` configured is reset to that value on EVERY
+    // Home Assistant restart (RestoreEntity only restores the last saved value
+    // when `initial` is unset). Setting initial is exactly what made the saved
+    // schedule/state/mode reset to defaults after every restart.
     const defs = [];
     const sched = this._config.schedule_entity;
     if (sched && sched.startsWith('input_text.')) {
       defs.push({ entity: sched, domain: 'input_text',
-        create: { name: titleize(sched.split('.')[1]), min: 0, max: 255, initial: '', mode: 'text' } });
+        create: { name: titleize(sched.split('.')[1]), min: 0, max: 255, mode: 'text' } });
     }
     const mode = this._config.mode_entity;
     if (mode && mode.startsWith('input_select.')) {
       defs.push({ entity: mode, domain: 'input_select',
-        create: { name: titleize(mode.split('.')[1]), options: ['Auto', 'Perm', 'OFF'], initial: 'Auto' } });
+        create: { name: titleize(mode.split('.')[1]), options: ['Auto', 'Perm', 'OFF'] } });
     }
     const st = this._config.state_entity;
     if (st && st.startsWith('input_text.')) {
       defs.push({ entity: st, domain: 'input_text',
-        create: { name: titleize(st.split('.')[1]), min: 0, max: 255, initial: '', mode: 'text' } });
+        create: { name: titleize(st.split('.')[1]), min: 0, max: 255, mode: 'text' } });
     }
     return defs;
   }
@@ -967,7 +956,9 @@ class PoolTimerCard extends HTMLElement {
             max: 255,
             mode: item.mode || 'text',
             pattern: item.pattern || null,
-            initial: item.initial || null,
+            // Clear any `initial` value: it would reset the helper to that value
+            // on every HA restart, wiping the saved schedule.
+            initial: null,
           });
         }
       }
@@ -2268,7 +2259,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.9.2 ',
+  '%c POOL-TIMER-CARD %c v2.9.4 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
