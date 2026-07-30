@@ -1,29 +1,56 @@
-# Sync the version in hacs.json and the JS console banner from the latest git tag.
-# Usage: ./update-version.ps1
+# Sync the version in hacs.json and the JS console banner.
+# Usage: ./update-version.ps1 2.9.6
 #
-# Replaces only the version substring in each file (regex), so existing
-# formatting, indentation and line endings are preserved.
+# Run this BEFORE creating the tag. The release workflow verifies that both files
+# match the tag being pushed and refuses to publish when they drift, so the order is:
+#
+#   1. ./update-version.ps1 <version>
+#   2. add the '## [<version>] - <date>' section to CHANGELOG.md
+#   3. git commit
+#   4. git tag v<version> && git push origin v<version>   -> workflow publishes it
+#
+# It used to read the version from `git describe --tags`, which had the order
+# backwards: the files can only be verified against a tag that already exists.
+#
+# Replaces only the version substring in each file (regex), so existing formatting,
+# indentation and line endings are preserved.
 
-$latestTag = git describe --tags --abbrev=0 2>$null
-if (-not $latestTag) {
-  Write-Host "No git tags found"
+param(
+  [Parameter(Position = 0)]
+  [string]$Version
+)
+
+if (-not $Version) {
+  Write-Host "Usage: ./update-version.ps1 <version>     e.g. ./update-version.ps1 2.9.6"
+  Write-Host ""
+  Write-Host "Run this before creating the tag. The release workflow fails when hacs.json"
+  Write-Host "or the console banner do not match the tag being pushed."
   exit 1
 }
 
-# Extract version from tag (v2.5.0 -> 2.5.0)
-$version = $latestTag -replace "^v", ""
+# Accept both '2.9.6' and 'v2.9.6'.
+$Version = $Version -replace "^v", ""
 
-# hacs.json — swap only the "version" value, keep formatting intact.
+if ($Version -notmatch "^\d+\.\d+\.\d+$") {
+  Write-Host "Not a semantic version: '$Version' (expected e.g. 2.9.6)"
+  exit 1
+}
+
+# hacs.json - swap only the "version" value, keep formatting intact.
 $hacsPath = Join-Path $PSScriptRoot "hacs.json"
 $hacs = [IO.File]::ReadAllText($hacsPath)
-$hacs = $hacs -replace '("version"\s*:\s*")[^"]*(")', ("`${1}$version`${2}")
+$hacs = $hacs -replace '("version"\s*:\s*")[^"]*(")', ("`${1}$Version`${2}")
 [IO.File]::WriteAllText($hacsPath, $hacs)
 
-# pool-timer-card.js — keep the console banner version in sync.
+# pool-timer-card.js - keep the console banner version in sync.
 $jsPath = Join-Path $PSScriptRoot "pool-timer-card.js"
 $js = [IO.File]::ReadAllText($jsPath)
-$js = $js -replace '(POOL-TIMER-CARD %c v)\d+\.\d+\.\d+', ("`${1}$version")
+$js = $js -replace '(POOL-TIMER-CARD %c v)\d+\.\d+\.\d+', ("`${1}$Version")
 [IO.File]::WriteAllText($jsPath, $js)
 
-Write-Host "Synced hacs.json and JS banner to v$version"
-Write-Host "Commit with: git add hacs.json pool-timer-card.js && git commit -m 'chore: update version to $version'"
+Write-Host "Synced hacs.json and the JS banner to v$Version"
+Write-Host ""
+Write-Host "Next:"
+Write-Host "  1. add the '## [$Version]' section to CHANGELOG.md (the workflow needs it)"
+Write-Host "  2. git add -A && git commit -m 'chore: release $Version'"
+Write-Host "  3. git tag v$Version && git push origin main v$Version"

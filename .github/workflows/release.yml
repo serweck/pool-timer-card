@@ -1,0 +1,87 @@
+name: Release
+
+# HACS resolves a repository's version from its latest GitHub *release* — a bare git
+# tag is not enough ("Create a new GitHub release (not just a tag, a full release)").
+# Pushing a tag therefore has to produce a release, which is what this workflow does.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Required by `gh release create`.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Verify version metadata and publish the release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      # The `version` key in hacs.json is NOT part of the HACS manifest spec and is
+      # ignored by HACS; it and the console banner exist for humans reading the repo.
+      # A mismatch means the release commit forgot a bump, so fail loudly instead of
+      # silently rewriting the files (which is what this workflow used to do — and it
+      # could not even push the result, because checking out a tag leaves a detached
+      # HEAD).
+      - name: Verify hacs.json and the console banner match the tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          hacs_version=$(python3 -c "import json; print(json.load(open('hacs.json')).get('version', ''))")
+          # sed with a BRE, not `grep -oP`: PCRE mode refuses to run under some locales.
+          banner_version=$(sed -n 's/.*POOL-TIMER-CARD %c v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' pool-timer-card.js | head -1)
+          echo "tag=$VERSION  hacs.json=$hacs_version  banner=$banner_version"
+          failed=0
+          if [ "$hacs_version" != "$VERSION" ]; then
+            echo "::error file=hacs.json::version is '$hacs_version', expected '$VERSION'"
+            failed=1
+          fi
+          if [ "$banner_version" != "$VERSION" ]; then
+            echo "::error file=pool-timer-card.js::console banner is '$banner_version', expected '$VERSION'"
+            failed=1
+          fi
+          [ "$failed" -eq 0 ]
+
+      # Release notes come from the CHANGELOG, so a release cannot be published
+      # without its entry. Both 2.9.3 and 2.9.4 shipped undocumented before this gate
+      # existed.
+      - name: Extract the CHANGELOG section for this version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # index(...) == 1 means "line starts with". Deliberately no regex here: the
+          # bracket in '## [x.y.z]' needs escaping in a regex, and the backslashes do
+          # not survive every shell/awk combination reliably.
+          awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { inside = 1; next }
+            inside && index($0, "## [") == 1 { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          # Drop leading blank lines so the release body starts at the first heading.
+          sed -i -e '/./,$!d' release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error file=CHANGELOG.md::no '## [$VERSION]' section found — every release needs its CHANGELOG entry"
+            exit 1
+          fi
+          echo "--- release notes ---"
+          cat release-notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag

@@ -50,6 +50,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **README**: new section on driving the schedule from an automation — write the 48-char
   bitstring to the schedule helper, *not* a preset name to the state helper.
 
+### Tooling
+- **Pushing a `v*` tag now creates the GitHub release.** HACS resolves a repository's
+  version from its latest *release*, not from git tags — a bare tag publishes nothing,
+  which is why this version did not show up in HACS at first. `update-version.yml` is
+  replaced by `release.yml`, which also verifies that `hacs.json` and the console banner
+  match the tag, and builds the release notes from this file — so a release can no longer
+  be published without its CHANGELOG entry (2.9.3 and 2.9.4 both shipped undocumented).
+- The old workflow could never have worked: it rewrote the `version` key in `hacs.json`,
+  which is not part of the HACS manifest spec and is ignored by HACS, and then ran
+  `git push` from the detached HEAD that checking out a tag produces.
+- `update-version.ps1` now takes the version as an argument
+  (`./update-version.ps1 2.9.6`) instead of reading `git describe --tags`. The old order
+  was backwards — the files have to be bumped *before* the tag exists for the release
+  gate to check them.
+
 ## [2.9.4] - 2026-07-04
 
 ### Fixed
