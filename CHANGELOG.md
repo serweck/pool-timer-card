@@ -4,6 +4,78 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.5] - 2026-07-30
+
+### Fixed
+- **The preset label went stale when an automation changed the schedule.** Writing a
+  preset *name* into the state helper only ever changed the dropdown label: nothing
+  expanded that name into the 48 half-hour segments, and the server-side blueprint never
+  reads the `preset` field at all. The 48-character string in the schedule helper is the
+  single source of truth for the pump. The card now re-derives the preset label from the
+  current segments on every state update, so a schedule written by an automation shows the
+  matching preset name — or **Custom** when it matches none. Derivation only: the card
+  writes nothing back for this.
+- **Editing a preset in the visual editor corrupted the built-in defaults.**
+  `setConfig()` assigned `DEFAULT_PRESETS` **by reference** when the card config declared
+  no presets. The editor then took a *shallow* copy (`[...presets]`) and assigned into its
+  elements — the very same objects — so renaming a preset or changing its time ranges
+  mutated the module-level default for every card instance in the page session.
+  `getStubConfig()` had the same flaw for **both** `DEFAULT_PRESETS` and
+  `DEFAULT_QUICK_ACTIONS`, leaking them into every card created from the picker.
+  All default hand-offs are now deep-cloned, and the six editor handlers deep-clone
+  before mutating, so they no longer write into the live `_config` either.
+  (`_parseQuickActions()` also returned `DEFAULT_QUICK_ACTIONS` by reference, but that
+  branch is unreachable: the legacy `flocculant_hours` / `product_hours` fallback always
+  builds fresh objects. Cloned regardless, so it cannot become a bug later.)
+- **Preset and quick-action names are now HTML-escaped.** A name containing `"`, `<` or
+  `&` broke the generated markup — in the card's own preset dropdown as well as in the
+  editor — and injected into the shadow root. Added an `escapeHtml()` helper and applied
+  it to every interpolation of a config-supplied string.
+
+### Removed
+- Dead `_loadSchedule()` and `_loadMode()`. Neither was called from anywhere: helper
+  reads happen inline in `set hass`, which also carries the `_dragging` /
+  `_lastSaveTime` guards. `_loadSchedule()` lacked those guards, so calling it would have
+  reintroduced the v2.9.2 clobbering bug. A comment now records why they are absent.
+
+### Changed
+- `_applyDefaultSchedule()` now delegates to `_rangesToSegments()` instead of duplicating
+  the range→segment conversion (including the midnight-wrap handling). One
+  implementation, and the surviving one is the more defensive of the two.
+- The reference photo moved to `assets/temporizador-fisico.jpg` (it lived in the repo
+  root and is not referenced by the README), and a stray scratch note was removed from
+  the root.
+
+### Docs
+- **README**: new section on driving the schedule from an automation — write the 48-char
+  bitstring to the schedule helper, *not* a preset name to the state helper.
+
+## [2.9.4] - 2026-07-04
+
+### Fixed
+- **Never set an *Initial value* on the helpers** (schedule / state / mode). This was the
+  root cause of the schedule and mode resetting to defaults on every Home Assistant
+  restart: an `input_text` / `input_select` created with `initial` configured is reset to
+  that value on every restart, whereas `RestoreEntity` only restores the last saved value
+  when `initial` is unset. Removed `initial` from all three helper definitions in the
+  one-click auto-setup, and it is now also cleared when the card fixes the schedule
+  helper's `max`.
+- Removed the diagnostic logging added in 2.9.3 while tracking this down.
+
+## [2.9.3] - 2026-07-04
+
+### Fixed
+- **Helper writes are now awaited.** `_saveSchedule()`, `_saveMode()` and `_saveState()`
+  became `async` and await confirmation of the service call, so a failed write no longer
+  passes unnoticed.
+- The schedule helper is now seeded with an empty string instead of 48 zeros, which is
+  what lets the card tell "genuinely empty" apart from "not restored yet".
+
+### Diagnostics
+- Added console logging around helper persistence to trace the schedule being lost on HA
+  restart while surviving a page refresh. (Removed again in 2.9.4 once the cause was
+  found.)
+
 ## [2.9.2] - 2026-06-18
 
 ### Fixed

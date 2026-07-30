@@ -181,6 +181,33 @@ function num(v, def) {
   return Number(v) > 0 ? Number(v) : def;
 }
 
+// Deep-copy plain config data (arrays / objects of primitives) so a caller can never
+// mutate a shared value. The DEFAULT_* constants above used to be handed out by
+// reference, so editing a quick action or preset in the visual editor mutated the
+// module-level default for every card instance in the page session.
+function cloneConfigData(value) {
+  if (value === null || value === undefined) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    // Non-serializable config should never happen (it comes from YAML), but a card that
+    // renders is better than one that throws during setConfig.
+    return value;
+  }
+}
+
+// Escape a user-supplied value before interpolating it into HTML text or a
+// double-quoted attribute. Preset and quick-action names come from config, so an
+// unescaped `"` or `<` breaks the markup and injects into the shadow root.
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function polarToXY(cx, cy, r, angleDeg) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
@@ -261,9 +288,11 @@ class PoolTimerCard extends HTMLElement {
       state_entity: config.state_entity || 'input_text.pool_timer_state',
       quick_actions: this._parseQuickActions(config),
       corner_actions: this._parseCornerActions(config),
-      presets: (Array.isArray(config.presets) && config.presets.length)
+      // Clone both branches: the default must not be shared, and the user's own config
+      // object must not be mutated in place by the editor either.
+      presets: cloneConfigData((Array.isArray(config.presets) && config.presets.length)
         ? config.presets
-        : DEFAULT_PRESETS,
+        : DEFAULT_PRESETS),
     };
     // Apply initial schedule from config only if it's the very first setup and we don't have segments loaded
     if (config.schedule && Array.isArray(config.schedule) && !this._initialized) {
@@ -288,7 +317,8 @@ class PoolTimerCard extends HTMLElement {
     const prodHours = num(config.product_hours, 3);
     if (flocHours > 0) actions.push({ name: 'Flocculant', hours: flocHours, icon: '🌀', after: 'OFF' });
     if (prodHours > 0) actions.push({ name: 'Treatment', hours: prodHours, icon: '🧪', after: 'Auto' });
-    return actions.length ? actions : DEFAULT_QUICK_ACTIONS;
+    // Clone: never hand out the module-level default by reference.
+    return actions.length ? actions : cloneConfigData(DEFAULT_QUICK_ACTIONS);
   }
 
   _parseCornerActions(config) {
@@ -370,6 +400,15 @@ class PoolTimerCard extends HTMLElement {
       } catch (_) { /* ignore malformed state */ }
     }
 
+    // The stored `preset` label goes stale when an automation rewrites the schedule
+    // helper directly: that changes the segments, not the label. Re-derive the label
+    // from the segments so the dropdown always reflects what is actually scheduled.
+    // Must run AFTER the state block above, which would otherwise overwrite it.
+    // Derivation only — this never writes back to Home Assistant.
+    if (!this._dragging) {
+      this._preset = this._findMatchingPreset();
+    }
+
     // Avoid re-rendering during drag or while a select is open
     // (which would close the dropdown and break interactions).
     if (this._dragging || this._selectOpen) return;
@@ -419,8 +458,10 @@ class PoolTimerCard extends HTMLElement {
       schedule_entity: 'input_text.pool_timer_schedule',
       mode_entity: 'input_select.pool_timer_mode',
       state_entity: 'input_text.pool_timer_state',
-      quick_actions: DEFAULT_QUICK_ACTIONS,
-      presets: DEFAULT_PRESETS,
+      // Clone: the card picker writes this straight into a new card's config, so
+      // sharing the constants here would leak them into every card created.
+      quick_actions: cloneConfigData(DEFAULT_QUICK_ACTIONS),
+      presets: cloneConfigData(DEFAULT_PRESETS),
     };
   }
 
@@ -454,29 +495,16 @@ class PoolTimerCard extends HTMLElement {
 
   /* ----- default schedule from YAML config ------------------------ */
   _applyDefaultSchedule(ranges) {
-    // Only used when no helper data exists yet
-    this._segments = new Array(SEGMENT_COUNT).fill(false);
-    for (const r of ranges) {
-      const [sh, sm] = r.start.split(':').map(Number);
-      const [eh, em] = r.end.split(':').map(Number);
-      const startIdx = sh * 2 + (sm >= 30 ? 1 : 0);
-      let endIdx = eh * 2 + (em >= 30 ? 1 : 0);
-      if (endIdx <= startIdx) endIdx += SEGMENT_COUNT;
-      for (let i = startIdx; i < endIdx; i++) {
-        this._segments[i % SEGMENT_COUNT] = true;
-      }
-    }
+    // Only used when no helper data exists yet. _rangesToSegments is the single
+    // implementation of the range→segment conversion (incl. the midnight wrap).
+    this._segments = this._rangesToSegments(ranges);
   }
 
   /* ----- persistence ---------------------------------------------- */
-  _loadSchedule() {
-    if (!this._hass) return;
-    const state = this._hass.states[this._config.schedule_entity];
-    if (state && state.state && state.state.length === SEGMENT_COUNT) {
-      this._segments = state.state.split('').map(c => c === '1');
-    }
-  }
-
+  // NOTE: there is deliberately no _loadSchedule() / _loadMode() here. Reading the
+  // helpers happens inline in `set hass`, which also carries the _dragging and
+  // _lastSaveTime guards. A standalone loader without those guards would overwrite
+  // the user's in-progress edit — that was the v2.9.2 bug.
   async _saveSchedule() {
     if (!this._hass) return;
     const val = this._segments.map(s => (s ? '1' : '0')).join('');
@@ -488,14 +516,6 @@ class PoolTimerCard extends HTMLElement {
       });
     } catch (e) {
       console.error('[pool-timer-card] Failed to save schedule:', e);
-    }
-  }
-
-  _loadMode() {
-    if (!this._hass) return;
-    const state = this._hass.states[this._config.mode_entity];
-    if (state && state.state) {
-      this._mode = state.state;
     }
   }
 
@@ -1119,7 +1139,7 @@ class PoolTimerCard extends HTMLElement {
       ? `<select class="preset-select" data-select="preset">
           <option value="">Custom</option>
           ${presets.map(p =>
-            `<option value="${p.name}" ${this._preset === p.name ? 'selected' : ''}>${p.name}</option>`
+            `<option value="${escapeHtml(p.name)}" ${this._preset === p.name ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
           ).join('')}
         </select>`
       : '';
@@ -1796,18 +1816,18 @@ class PoolTimerCardEditor extends HTMLElement {
     return header + actions.map((action, idx) => `
       <div class="list-item action-item">
         <div class="name-cell">
-          <input type="text" class="action-icon" data-idx="${idx}" value="${action.icon || '⏱️'}"
+          <input type="text" class="action-icon" data-idx="${idx}" value="${escapeHtml(action.icon || '⏱️')}"
             placeholder="🌀" maxlength="3" />
-          <input type="text" class="action-name" data-idx="${idx}" value="${action.name || ''}"
+          <input type="text" class="action-name" data-idx="${idx}" value="${escapeHtml(action.name || '')}"
             placeholder="(icon only)" />
         </div>
-        <input type="number" class="action-hours" data-idx="${idx}" value="${action.hours}"
+        <input type="number" class="action-hours" data-idx="${idx}" value="${escapeHtml(action.hours)}"
           min="0.5" step="0.5" placeholder="2" />
         <select class="action-after" data-idx="${idx}">
           <option value="OFF" ${action.after === 'OFF' ? 'selected' : ''}>Lock OFF</option>
           <option value="Auto" ${action.after === 'Auto' ? 'selected' : ''}>Auto</option>
           ${presets.map(p =>
-            `<option value="${p.name}" ${action.after === p.name ? 'selected' : ''}>${p.name}</option>`
+            `<option value="${escapeHtml(p.name)}" ${action.after === p.name ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
           ).join('')}
         </select>
         <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
@@ -1826,10 +1846,10 @@ class PoolTimerCardEditor extends HTMLElement {
     `;
     return header + presets.map((preset, idx) => `
       <div class="list-item preset-item">
-        <input type="text" class="preset-name" data-idx="${idx}" value="${preset.name}"
+        <input type="text" class="preset-name" data-idx="${idx}" value="${escapeHtml(preset.name)}"
           placeholder="Verano" />
         <input type="text" class="preset-schedule" data-idx="${idx}"
-          value="${preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : ''}"
+          value="${escapeHtml(preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : '')}"
           placeholder="08:00-13:00, 16:00-20:00" />
         <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
       </div>
@@ -2122,7 +2142,9 @@ class PoolTimerCardEditor extends HTMLElement {
     root.querySelectorAll('.action-name, .action-hours, .action-icon, .action-after').forEach(input => {
       input.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.idx, 10);
-        const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+        // Deep clone: a spread only copies the array, so `actions[idx][field] = ...`
+        // below would mutate the very object held in _config (or in DEFAULT_QUICK_ACTIONS).
+        const actions = cloneConfigData(this._config.quick_actions || DEFAULT_QUICK_ACTIONS);
         const fieldMap = { 'action-name': 'name', 'action-hours': 'hours', 'action-icon': 'icon', 'action-after': 'after' };
         const field = fieldMap[e.target.className];
         if (field === 'hours') {
@@ -2141,7 +2163,7 @@ class PoolTimerCardEditor extends HTMLElement {
         if (e.target.classList.contains('btn-delete') && e.target.closest('.action-item')) {
           e.stopPropagation();
           const actionIdx = parseInt(e.target.dataset.idx, 10);
-          const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+          const actions = cloneConfigData(this._config.quick_actions || DEFAULT_QUICK_ACTIONS);
           actions.splice(actionIdx, 1);
           this._updateConfig({ quick_actions: actions });
         }
@@ -2152,7 +2174,7 @@ class PoolTimerCardEditor extends HTMLElement {
     const addActionBtn = root.getElementById('btn-add-action');
     if (addActionBtn) {
       addActionBtn.addEventListener('click', () => {
-        const actions = [...(this._config.quick_actions || DEFAULT_QUICK_ACTIONS)];
+        const actions = cloneConfigData(this._config.quick_actions || DEFAULT_QUICK_ACTIONS);
         actions.push({ name: 'New Action', hours: 2, icon: '⏱️', after: 'Auto' });
         this._updateConfig({ quick_actions: actions });
       });
@@ -2162,7 +2184,9 @@ class PoolTimerCardEditor extends HTMLElement {
     root.querySelectorAll('.preset-name, .preset-schedule').forEach(input => {
       input.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.idx, 10);
-        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+        // Deep clone: `presets[idx].name = ...` below would otherwise mutate the object
+        // held in _config (or in DEFAULT_PRESETS) rather than a copy of it.
+        const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
         if (e.target.className === 'preset-name') {
           presets[idx].name = e.target.value;
         } else {
@@ -2184,7 +2208,7 @@ class PoolTimerCardEditor extends HTMLElement {
         if (e.target.classList.contains('btn-delete')) {
           e.stopPropagation();
           const idx = parseInt(e.target.dataset.idx, 10);
-          const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+          const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
           presets.splice(idx, 1);
           this._updateConfig({ presets });
         }
@@ -2195,7 +2219,7 @@ class PoolTimerCardEditor extends HTMLElement {
     const addPresetBtn = root.getElementById('btn-add-preset');
     if (addPresetBtn) {
       addPresetBtn.addEventListener('click', () => {
-        const presets = [...(this._config.presets || DEFAULT_PRESETS)];
+        const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
         presets.push({ name: 'New Preset', schedule: [{ start: '10:00', end: '16:00' }] });
         this._updateConfig({ presets });
       });
@@ -2259,7 +2283,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.9.4 ',
+  '%c POOL-TIMER-CARD %c v2.9.5 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

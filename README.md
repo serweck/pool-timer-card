@@ -349,6 +349,54 @@ automation:
           option: "Perm"
 ```
 
+### Changing the schedule from an automation
+
+> [!IMPORTANT]
+> To change the schedule, write the **48-character string** to the schedule helper.
+> Do **not** write a preset name into the state helper — that only changes the label
+> shown in the dropdown, it does not change when the pump runs.
+
+The schedule helper is the single source of truth: 48 characters, one per half hour,
+starting at 00:00. `1` = pump on, `0` = pump off.
+
+```yaml
+# Weekend schedule: 09:00-13:00 and 16:00-20:00
+automation:
+  - alias: "Pool weekend schedule"
+    trigger:
+      - platform: time
+        at: "00:05:00"
+    condition:
+      - condition: time
+        weekday: [sat, sun]
+    action:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.pool_timer_schedule
+        data:
+          value: "000000000000000000111111110000001111111100000000"
+```
+
+Every open card picks the change up immediately, and the blueprint enforces it with
+every browser closed. The preset dropdown updates on its own: the card matches the new
+schedule against your configured presets and shows that preset's name, or **Custom**
+when it matches none.
+
+To make the bitstring easy to keep in sync with a preset, define presets with
+`segments:` instead of `schedule:` — then the card config and your automation use the
+exact same string:
+
+```yaml
+presets:
+  - name: Summer
+    segments: "000000000000000011111111110000001111111100000000"
+```
+
+> [!TIP]
+> Counting characters by hand is error-prone. To get the string for a schedule, set it
+> up on the dial and read the current value of `input_text.pool_timer_schedule` in
+> **Developer tools → States**, then paste it into your automation.
+
 ## Required: install the blueprint (browser-independent operation)
 
 The card is the **UI**; the actual pump control runs **server-side** in Home
