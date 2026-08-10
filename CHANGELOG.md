@@ -4,6 +4,25 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.1] - 2026-08-10
+
+### Fixed
+- **Deleting a preset left the card demanding its helper forever.** After migrating,
+  the YAML `presets:` block is supposed to be only a seed, but the setup check kept
+  treating it as the authority on which helpers must exist. Delete a preset from the
+  card — which correctly removes both the option and its helper — and its YAML entry
+  stayed behind, so the card reported a missing helper for a preset that no longer
+  existed anywhere else.
+
+  The loop was the bad part: pressing **Create helpers** to clear the warning recreated
+  an `input_text` with no option pointing at it — precisely the orphan the delete had
+  just avoided.
+
+  Which presets need a helper is now decided by the `input_select`'s options once it
+  exists, and only by the YAML before migration, when the YAML is genuinely all there
+  is. An option added from **Settings → Helpers** with no YAML counterpart is created
+  empty and shows disabled until you give it a schedule.
+
 ## [2.11.0] - 2026-08-10
 
 ### Changed

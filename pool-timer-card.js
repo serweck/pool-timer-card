@@ -1269,20 +1269,43 @@ class PoolTimerCard extends HTMLElement {
     // source. 'Custom' is not a preset: it is the absence of a match.
     const psel = this._config.preset_entity;
     if (psel && psel.startsWith('input_select.')) {
-      const nombres = (this._config.presets || []).map(p => p.name);
-      defs.push({ entity: psel, domain: 'input_select',
-        create: { name: titleize(psel.split('.')[1]),
-                  options: ['Custom', ...nombres] } });
-      // One helper per preset, seeded with the schedule the YAML holds today.
-      // These are matched by friendly NAME, not entity_id — hence `byName`.
-      for (const p of (this._config.presets || [])) {
-        const bits = (this._segmentsForPreset({ fromConfig: p }) || [])
-          .map(s => (s ? '1' : '0')).join('');
-        if (bits.length !== SEGMENT_COUNT) continue;
-        defs.push({ byName: p.name, domain: 'input_text',
-          create: { name: PRESET_PREFIX + p.name,
-                    min: 0, max: 255, mode: 'text' },
-          seed: bits });
+      const selState = this._hass?.states[psel];
+      const yamlPresets = this._config.presets || [];
+
+      // Before migration the input_select does not exist yet: create it, seeded
+      // with the names the YAML holds.
+      if (!selState) {
+        defs.push({ entity: psel, domain: 'input_select',
+          create: { name: titleize(psel.split('.')[1]),
+                    options: ['Custom', ...yamlPresets.map(p => p.name)] } });
+      }
+
+      // Which presets need a helper:
+      //   before migration -> the YAML list, since that is what we are migrating
+      //   after            -> the input_select's options, because the server owns
+      //                       the list from then on and the YAML is only the seed.
+      //
+      // Treating the YAML as authoritative here was a bug with a nasty loop: a
+      // preset deleted from the card (which correctly removes option AND helper)
+      // stayed in the YAML, so the card demanded its helper forever — and pressing
+      // "Create helpers" recreated a helper with no option pointing at it, which is
+      // exactly the orphan the delete had just avoided.
+      const nombres = selState
+        ? (selState.attributes.options || []).filter(n => n !== 'Custom')
+        : yamlPresets.map(p => p.name);
+
+      // Matched by friendly NAME, not entity_id — hence `byName`.
+      for (const name of nombres) {
+        const desdeYaml = yamlPresets.find(p => p.name === name);
+        const bits = desdeYaml
+          ? (this._segmentsForPreset({ fromConfig: desdeYaml }) || [])
+              .map(s => (s ? '1' : '0')).join('')
+          : '';
+        defs.push({ byName: name, domain: 'input_text',
+          create: { name: PRESET_PREFIX + name, min: 0, max: 255, mode: 'text' },
+          // No YAML counterpart (an option added in Settings): create it empty.
+          // It renders disabled until its schedule is filled in, which is honest.
+          seed: bits.length === SEGMENT_COUNT ? bits : null });
       }
     }
     return defs;
@@ -2818,7 +2841,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.11.0 ',
+  '%c POOL-TIMER-CARD %c v2.11.1 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
