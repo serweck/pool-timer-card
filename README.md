@@ -1,5 +1,7 @@
 # 🏊 Pool Timer Card
 
+**English** · [Español](README.es.md)
+
 A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Inspired by real analog pool timers, it lets you visually schedule your pool pump with interactive half-hour segments — plus **presets** (Summer / Winter) and **timed treatment actions** (flocculant / shock).
 
 <img src="assets/preview.png" alt="Pool Timer Card Preview" width="500" style="max-width: 100%; border-radius: 8px; margin: 20px 0;" />
@@ -218,9 +220,12 @@ your schedule matches nothing, and the blueprint ignores it.
 #### Migrating
 
 Press **Create helpers** on the card once. It creates the `input_select` and one
-`input_text` per preset, **seeded with the schedules your YAML holds today**. After
-that the `presets:` block in your YAML is no longer read — it stays only as the
-seed for anyone who has not migrated yet.
+`input_text` per preset, **seeded with the schedules your YAML holds today**.
+
+From then on the `input_select`'s options are the preset list. Your `presets:` block
+stops deciding which presets exist — it is only consulted to seed a helper you
+recreate later, matching by name. That is why deleting a preset from the card makes
+it disappear for good even though its YAML entry is still sitting there.
 
 Nothing breaks if you never migrate: without `preset_entity` the card reads
 `presets:` exactly as before.
