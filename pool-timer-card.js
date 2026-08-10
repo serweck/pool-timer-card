@@ -980,9 +980,13 @@ class PoolTimerCard extends HTMLElement {
 
   // Load a preset's schedule and switch to Auto so it takes effect.
   _selectPreset(name) {
-    const preset = (this._config.presets || []).find(p => p.name === name);
+    const preset = this._presets().find(p => p.name === name);
     if (!preset) return;
-    this._segments = this._segmentsForPreset(preset);
+    const segs = this._segmentsForPreset(preset);
+    // Missing or corrupt helper: do nothing rather than apply an empty schedule.
+    // The option is rendered disabled, so this is the belt to that braces.
+    if (!segs) return;
+    this._segments = segs;
     this._preset = name;
     this._mode = 'Auto';
     this._action = null;
@@ -991,8 +995,30 @@ class PoolTimerCard extends HTMLElement {
     this._saveSchedule();
     this._saveMode();
     this._saveState();
+    this._syncPresetEntity(name);
     this._evaluateSchedule();
     this._render();
+  }
+
+  // Reflect the active preset in the input_select.
+  //
+  // ONLY writes when the value actually differs. The blueprint reacts to changes of
+  // this entity by writing the schedule, and the card writes this entity when the
+  // schedule changes — the two directions only converge because every write is
+  // conditional. Drop that guard and you get a ping-pong between two entities that
+  // is very hard to diagnose.
+  _syncPresetEntity(name) {
+    const e = this._config.preset_entity;
+    if (!e) return;
+    const st = this._hass?.states[e];
+    if (!st) return;
+    const objetivo = name || 'Custom';
+    if (st.state === objetivo) return;
+    // Never invent options: if 'Custom' is not among them, leave the entity alone
+    // rather than failing the service call on every schedule edit.
+    if (!(st.attributes.options || []).includes(objetivo)) return;
+    this._hass.callService('input_select', 'select_option',
+      { entity_id: e, option: objetivo });
   }
 
   // Start a timed action by index.
