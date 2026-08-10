@@ -1106,17 +1106,60 @@ class PoolTimerCard extends HTMLElement {
       defs.push({ entity: st, domain: 'input_text',
         create: { name: titleize(st.split('.')[1]), min: 0, max: 255, mode: 'text' } });
     }
+
+    // --- Server-side presets ------------------------------------------------
+    // The input_select's options ARE the preset list. It is seeded from the YAML
+    // `presets:`, which from then on is only a migration seed and never a live
+    // source. 'Custom' is not a preset: it is the absence of a match.
+    const psel = this._config.preset_entity;
+    if (psel && psel.startsWith('input_select.')) {
+      const nombres = (this._config.presets || []).map(p => p.name);
+      defs.push({ entity: psel, domain: 'input_select',
+        create: { name: titleize(psel.split('.')[1]),
+                  options: ['Custom', ...nombres] } });
+      // One helper per preset, seeded with the schedule the YAML holds today.
+      // These are matched by friendly NAME, not entity_id — hence `byName`.
+      for (const p of (this._config.presets || [])) {
+        const bits = (this._segmentsForPreset({ fromConfig: p }) || [])
+          .map(s => (s ? '1' : '0')).join('');
+        if (bits.length !== SEGMENT_COUNT) continue;
+        defs.push({ byName: p.name, domain: 'input_text',
+          create: { name: PoolTimerCard.PRESET_PREFIX + p.name,
+                    min: 0, max: 255, mode: 'text' },
+          seed: bits });
+      }
+    }
     return defs;
   }
 
   _setupIssues() {
     if (!this._hass) return { missing: [], maxTooSmall: false, canFix: false };
-    const missing = this._helperDefs().filter(d => !this._hass.states[d.entity]);
+    // Preset helpers have no known entity_id up front — that is the point of the
+    // design — so they are looked up by friendly name instead.
+    const missing = this._helperDefs().filter(d => d.byName
+      ? !this._presetHelperEntity(d.byName)
+      : !this._hass.states[d.entity]);
     const sched = this._hass.states[this._config.schedule_entity];
     const schedMax = sched ? Number(sched.attributes && sched.attributes.max) : NaN;
     const maxTooSmall = !!(sched && schedMax > 0 && schedMax < SEGMENT_COUNT);
     const canFix = !!(this._hass.user && this._hass.user.is_admin);
     return { missing, maxTooSmall, canFix };
+  }
+
+  // entity_id of a helper from its collection id. For these helpers the registry's
+  // `unique_id` IS the collection id. Verified on a live instance that neither the
+  // collection id nor a slug of the name predicts the entity_id — an input_select
+  // with id "integracionalarmaajax" lives at input_select.integracion_alarma_ajax —
+  // so the registry is the only correct lookup.
+  async _entityIdForCollectionId(domain, collectionId) {
+    try {
+      const reg = await this._hass.callWS({ type: 'config/entity_registry/list' });
+      const hit = (reg || []).find(e => e.platform === domain && e.unique_id === collectionId);
+      return hit ? hit.entity_id : null;
+    } catch (e) {
+      console.error('[pool-timer-card] entity registry lookup failed:', e);
+      return null;
+    }
   }
 
   async _runSetup() {
@@ -1127,9 +1170,21 @@ class PoolTimerCard extends HTMLElement {
     this._setupError = null;
     this._render();
     try {
-      // Create any missing helpers.
+      // Create any missing helpers. `<domain>/create` returns the created item
+      // including its collection id, which resolves to an entity_id through the
+      // registry deterministically — do NOT poll hass.states for it, and never
+      // build the entity_id by hand.
       for (const d of missing) {
-        await this._hass.callWS({ type: `${d.domain}/create`, ...d.create });
+        const creado = await this._hass.callWS({ type: `${d.domain}/create`, ...d.create });
+        if (!d.seed || !creado || !creado.id) continue;
+        const eid = await this._entityIdForCollectionId(d.domain, creado.id);
+        // Seed the preset helper with the schedule the YAML holds. Without this the
+        // helper is created empty, its option renders disabled, and the migration
+        // has moved the presets without bringing their contents.
+        if (eid) {
+          await this._hass.callService('input_text', 'set_value',
+            { entity_id: eid, value: d.seed });
+        }
       }
       // Fix the schedule helper's max length if it's below 48.
       if (maxTooSmall) {
