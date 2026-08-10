@@ -23,6 +23,20 @@ Una tarjeta personalizada para Home Assistant que reproduce un temporizador mec�
 
 ## Instalación
 
+> [!IMPORTANT]
+> Instalar la tarjeta es **la mitad de la instalación**. La bomba la gobierna un
+> **blueprint** en el servidor, y es lo que hace que el horario funcione con todos
+> los navegadores cerrados. Sin él, la tarjeta solo actúa cuando la tocas, y nada
+> vigila el horario por la noche.
+>
+> Son tres pasos, no uno:
+> 1. Instalar la tarjeta (abajo)
+> 2. Crear los [helpers necesarios](#helpers-necesarios) — la tarjeta puede hacerlo en un clic
+> 3. **[Instalar el blueprint](#obligatorio-instalar-el-blueprint-funcionamiento-sin-navegador)**
+>
+> Desde la v2.12.0 la tarjeta comprueba si el blueprint está y te avisa si falta,
+> para que no te enteres la noche en que la bomba no arranca.
+
 ### HACS (recomendado)
 
 1. Abre HACS → Frontend → **Repositorios personalizados**

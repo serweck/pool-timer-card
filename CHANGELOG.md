@@ -4,6 +4,37 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.12.0] - 2026-08-10
+
+### Added
+- **The card now tells you when the blueprint is missing.** The blueprint is what runs
+  the pump with no dashboard open, and skipping it is the easiest mistake to make — it
+  is documented well below the install steps, so it is easy to never scroll to. Nothing
+  in Home Assistant said anything was wrong; you found out the night the pump did not
+  run. The card checks once on load and shows a notice for four distinct situations:
+
+  | Situation | Notice |
+  |---|---|
+  | Blueprint not imported | *Blueprint required* — with a one-click **Import** button |
+  | Imported, no automation uses it for this pump | *Blueprint not in use* |
+  | An automation exists but for a **different** schedule helper | *Blueprint not in use* |
+  | The automation exists but is turned off | *Blueprint not in use* |
+
+  What is detectable was checked against a live instance rather than assumed:
+  `blueprint/list` reports whether the blueprint is imported in one call, but an
+  automation entity's attributes do **not** reveal which blueprint it uses and there is
+  no usage API — so finding the automation means reading automation configs, which only
+  admins can do. Non-admins get the import check and nothing more, rather than a guess.
+
+  The check runs once per card, never blocks a render, and fails silent on any API
+  error: a false "not installed" warning on every load would be worse than the silence
+  it replaces.
+
+### Changed
+- The **Installation** section of both READMEs now states up front that setup is three
+  steps — card, helpers, blueprint — instead of leaving the blueprint to be discovered
+  much further down.
+
 ## [2.11.1] - 2026-08-10
 
 ### Fixed

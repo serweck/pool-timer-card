@@ -23,6 +23,20 @@ A skeuomorphic 24-hour mechanical pool timer custom card for Home Assistant. Ins
 
 ## Installation
 
+> [!IMPORTANT]
+> Installing the card is **half the setup**. The pump is driven server-side by a
+> **blueprint**, which is what makes the schedule run with every browser closed.
+> Without it the card only acts when you tap it, and nothing enforces the schedule
+> overnight.
+>
+> There are three steps, not one:
+> 1. Install the card (below)
+> 2. Create the [required helpers](#required-helpers) — the card can do this in one click
+> 3. **[Install the blueprint](#required-install-the-blueprint-browser-independent-operation)**
+>
+> Since v2.12.0 the card checks for the blueprint and tells you if it is missing, so
+> you do not find out the night the pump does not run.
+
 ### HACS (Recommended)
 
 1. Open HACS → Frontend → **Custom repositories**

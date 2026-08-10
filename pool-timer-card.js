@@ -72,6 +72,12 @@ const TRANSLATIONS = {
     setup_admin_only: 'Ask an administrator to create the required helpers.',
     setup_busy: 'Working…',
     setup_error: 'Setup failed — see the browser console.',
+    bp_title: 'Blueprint required',
+    bp_title_idle: 'Blueprint not in use',
+    bp_missing: 'The schedule is not enforced while no dashboard is open. Import the blueprint.',
+    bp_no_automation: 'The blueprint is imported but no automation uses it for this pump.',
+    bp_automation_off: 'The blueprint automation exists but is turned off.',
+    bp_import: 'Import',
   },
   es: {
     pump_on: 'Bomba: ON',
@@ -108,6 +114,12 @@ const TRANSLATIONS = {
     setup_admin_only: 'Pide a un administrador que cree los helpers necesarios.',
     setup_busy: 'Trabajando…',
     setup_error: 'Error en la configuración — mira la consola del navegador.',
+    bp_title: 'Falta el blueprint',
+    bp_title_idle: 'Blueprint sin usar',
+    bp_missing: 'El horario no se aplica mientras no haya ningún panel abierto. Importa el blueprint.',
+    bp_no_automation: 'El blueprint está importado pero ninguna automatización lo usa para esta bomba.',
+    bp_automation_off: 'La automatización del blueprint existe pero está desactivada.',
+    bp_import: 'Importar',
   },
 };
 
@@ -314,6 +326,13 @@ function segmentArc(cx, cy, rOuter, rInner, startDeg, endDeg) {
 /*  "integracionalarmaajax" lives at input_select.integracion_alarma_ajax*/
 /*  Matching by name also removes slug collisions entirely.              */
 /* ------------------------------------------------------------------ */
+// Blueprint the card delegates pump control to. Matched loosely elsewhere (by
+// source_url and by 'pool_timer' in the path) so a renamed import still counts.
+const BLUEPRINT_PATH = 'serweck/pool_timer.yaml';
+const BLUEPRINT_IMPORT_URL =
+  'https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=' +
+  encodeURIComponent('https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml');
+
 const PRESET_PREFIX = 'Pool Timer Preset ';
 
 /* --- Hour ranges <-> 48 half-hour segments ------------------------------
@@ -579,6 +598,9 @@ class PoolTimerCard extends HTMLElement {
     this._hass = hass;
     // Detect language
     this._lang = (hass.language || hass.locale?.language || 'en');
+    // Fire-and-forget, once per card instance. Deliberately not awaited: the check
+    // reads automation configs and must never delay a render.
+    if (!this._bpChecked) this._checkBlueprint();
     // Initialize select state flag
     if (!this._selectOpen) this._selectOpen = false;
 
@@ -1334,6 +1356,68 @@ class PoolTimerCard extends HTMLElement {
     }
   }
 
+  /* ----- blueprint presence check ----------------------------------
+   * The blueprint is what drives the pump with no dashboard open, and skipping it
+   * is the easiest mistake to make — it is documented well below the install
+   * steps. Nothing in Home Assistant told the user it was missing, so the card
+   * checks and says so.
+   *
+   * What is actually detectable, verified against a live instance:
+   *   - `blueprint/list` reports whether the blueprint is imported. One call, exact.
+   *   - An automation entity's attributes do NOT reveal which blueprint it uses,
+   *     and there is no blueprint/usage API. So finding the automation means
+   *     reading each automation's config (admin only, ~0.6-2 s for 30 automations).
+   *
+   * Runs once per card instance and fails silent: a false "not installed" warning
+   * on every load would be worse than the silence it replaces.
+   * ---------------------------------------------------------------- */
+  async _checkBlueprint() {
+    if (this._bpChecked || !this._hass) return;
+    this._bpChecked = true;
+    try {
+      const list = await this._hass.callWS({ type: 'blueprint/list', domain: 'automation' });
+      const esNuestro = (clave, val) => clave === BLUEPRINT_PATH
+        || String(val?.metadata?.source_url || '').includes('pool-timer-card');
+      const imported = Object.entries(list || {}).some(([k, v]) => esNuestro(k, v));
+      if (!imported) { this._bpState = 'missing'; this._render(); return; }
+
+      // Imported. Is there an automation built from it, wired to THIS card?
+      // Only admins can read automation configs; for everyone else, stop here
+      // rather than guess.
+      if (!this._hass.user?.is_admin) { this._bpState = 'ok'; return; }
+
+      const autos = Object.entries(this._hass.states)
+        .filter(([k]) => k.startsWith('automation.'))
+        .map(([k, v]) => ({ eid: k, id: v.attributes.id, on: v.state === 'on' }))
+        .filter(a => a.id);
+      let hallada = null;
+      for (const a of autos) {
+        const cfg = await this._fetchAutomationConfig(a.id);
+        const bp = cfg?.use_blueprint;
+        if (!bp || !String(bp.path || '').includes('pool_timer')) continue;
+        // Must be wired to this card's schedule helper: a blueprint automation for
+        // a different pool does not enforce this one.
+        if (bp.input?.schedule_helper !== this._config.schedule_entity) continue;
+        hallada = a;
+        break;
+      }
+      this._bpState = !hallada ? 'no-automation' : (hallada.on ? 'ok' : 'automation-off');
+      if (this._bpState !== 'ok') this._render();
+    } catch (e) {
+      // Never nag on an API hiccup.
+      this._bpState = null;
+    }
+  }
+
+  async _fetchAutomationConfig(id) {
+    try {
+      const r = await this._hass.callApi('GET', `config/automation/config/${id}`);
+      return r;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async _runSetup() {
     if (!this._hass || this._setupBusy) return;
     const { missing, maxTooSmall, canFix } = this._setupIssues();
@@ -1526,6 +1610,26 @@ class PoolTimerCard extends HTMLElement {
             ${action}
           </div>
           ${err}
+        </div>`;
+    }
+
+    // Blueprint notice. Separate from the helper banner: helpers stop the card from
+    // working at all, a missing blueprint stops it working *unattended*, which is
+    // easy to not notice until the pump does not run one night.
+    if (this._bpState && this._bpState !== 'ok') {
+      const msg = this._bpState === 'missing' ? t('bp_missing', lang)
+        : this._bpState === 'no-automation' ? t('bp_no_automation', lang)
+        : t('bp_automation_off', lang);
+      const accion = this._bpState === 'missing'
+        ? `<a class="chip bp-btn" href="${BLUEPRINT_IMPORT_URL}" target="_blank"
+             rel="noopener noreferrer">${t('bp_import', lang)}</a>`
+        : '';
+      setupHTML += `
+        <div class="bp-banner">
+          <div class="setup-row">
+            <span class="setup-txt">🧩 <b>${t(this._bpState === 'missing' ? 'bp_title' : 'bp_title_idle', lang)}:</b> ${msg}</span>
+            ${accion}
+          </div>
         </div>`;
     }
 
@@ -2000,6 +2104,21 @@ class PoolTimerCard extends HTMLElement {
         }
         .setup-btn { white-space: nowrap; }
         .setup-btn[disabled] { opacity: 0.6; cursor: default; }
+        .bp-banner {
+          margin-bottom: 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(255,149,0,0.10);
+          border: 1px solid ${COLORS.ledRetry};
+          font-size: 13px;
+          line-height: 1.35;
+          color: ${COLORS.textPrimary};
+        }
+        .bp-btn {
+          white-space: nowrap;
+          text-decoration: none;
+          display: inline-block;
+        }
         .setup-err {
           margin-top: 6px;
           font-size: 12px;
@@ -2841,7 +2960,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.11.1 ',
+  '%c POOL-TIMER-CARD %c v2.12.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
