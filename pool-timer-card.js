@@ -304,6 +304,91 @@ function segmentArc(cx, cy, rOuter, rInner, startDeg, endDeg) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Server-side presets — shared by the card and its visual editor      */
+/*                                                                      */
+/*  A preset is an option of `preset_entity` (an input_select) plus an   */
+/*  input_text holding its 48-character schedule. The two are linked by  */
+/*  the helper's FRIENDLY NAME, never by entity_id: Home Assistant does  */
+/*  not guarantee an entity_id is derivable from the collection id or    */
+/*  from the name — an input_select whose collection id is               */
+/*  "integracionalarmaajax" lives at input_select.integracion_alarma_ajax*/
+/*  Matching by name also removes slug collisions entirely.              */
+/* ------------------------------------------------------------------ */
+const PRESET_PREFIX = 'Pool Timer Preset ';
+
+// entity_id of the input_text holding `name`'s schedule, or null when absent.
+function presetHelperEntity(hass, name) {
+  if (!hass || !name) return null;
+  const wanted = PRESET_PREFIX + name;
+  for (const [eid, st] of Object.entries(hass.states)) {
+    if (!eid.startsWith('input_text.')) continue;
+    if (st.attributes && st.attributes.friendly_name === wanted) return eid;
+  }
+  return null;
+}
+
+// Registry lookups. For these helpers the registry `unique_id` IS the collection
+// id, which is the only reliable bridge between the two worlds.
+async function entityIdForCollectionId(hass, domain, collectionId) {
+  const reg = await hass.callWS({ type: 'config/entity_registry/list' });
+  const hit = (reg || []).find(e => e.platform === domain && e.unique_id === collectionId);
+  return hit ? hit.entity_id : null;
+}
+
+async function collectionIdForEntity(hass, entityId) {
+  const domain = entityId.split('.')[0];
+  const reg = await hass.callWS({ type: 'config/entity_registry/list' });
+  const hit = (reg || []).find(e => e.entity_id === entityId && e.platform === domain);
+  return hit ? hit.unique_id : null;
+}
+
+// Add a preset: a new option on the input_select plus its own input_text.
+async function createPreset(hass, selectEntity, name) {
+  const clean = String(name || '').trim();
+  if (!clean) throw new Error('The preset needs a name');
+  if (clean === 'Custom') throw new Error('"Custom" is reserved — it is the absence of a match');
+  const sel = hass.states[selectEntity];
+  if (!sel) throw new Error(`${selectEntity} does not exist yet — run "Create helpers" first`);
+  const options = sel.attributes.options || [];
+  if (options.includes(clean)) throw new Error(`The preset "${clean}" already exists`);
+
+  const selId = await collectionIdForEntity(hass, selectEntity);
+  if (!selId) throw new Error(`Could not resolve ${selectEntity} in the entity registry`);
+  await hass.callWS({ type: 'input_select/update', input_select_id: selId,
+    name: sel.attributes.friendly_name, options: [...options, clean] });
+  await hass.callWS({ type: 'input_text/create',
+    name: PRESET_PREFIX + clean, min: 0, max: 255, mode: 'text' });
+}
+
+// Remove a preset AND its helper. Leaving the helper behind is what would produce
+// the orphans that renaming creates, which is why renaming is documented as
+// "delete and create" rather than being silently guessed at.
+async function deletePreset(hass, selectEntity, name) {
+  if (name === 'Custom') return;
+  const sel = hass.states[selectEntity];
+  if (!sel) throw new Error(`${selectEntity} does not exist`);
+
+  // Resolve BOTH collection ids before mutating anything. Removing the option first
+  // and only then discovering the helper cannot be resolved would leave precisely
+  // the orphan this whole design exists to avoid — and silently, because the option
+  // would already be gone from the dropdown.
+  const selId = await collectionIdForEntity(hass, selectEntity);
+  if (!selId) throw new Error(`Could not resolve ${selectEntity} in the entity registry`);
+  const helper = presetHelperEntity(hass, name);
+  const helperId = helper ? await collectionIdForEntity(hass, helper) : null;
+  if (helper && !helperId) {
+    throw new Error(`Could not resolve ${helper} in the entity registry — nothing was deleted`);
+  }
+
+  await hass.callWS({ type: 'input_select/update', input_select_id: selId,
+    name: sel.attributes.friendly_name,
+    options: (sel.attributes.options || []).filter(o => o !== name) });
+  if (helperId) {
+    await hass.callWS({ type: 'input_text/delete', input_text_id: helperId });
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main card class                                                    */
 /* ------------------------------------------------------------------ */
 class PoolTimerCard extends HTMLElement {
@@ -918,25 +1003,10 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
-  // Friendly-name prefix every preset helper is created with.
-  //
-  // The link between a preset and its helper is the NAME, never the entity_id.
-  // Home Assistant does not guarantee that an entity_id is derivable from either
-  // the collection id or the name: an input_select whose collection id is
-  // "integracionalarmaajax" lives at input_select.integracion_alarma_ajax. Matching
-  // by friendly name also removes the slug-collision problem entirely ("Verano 1"
-  // and "Verano-1" slugify the same but are distinct names).
-  static get PRESET_PREFIX() { return 'Pool Timer Preset '; }
-
-  // entity_id of the input_text holding `name`'s schedule, or null when absent.
+  // See the module-level preset helpers above for why the link is the friendly
+  // name and not the entity_id.
   _presetHelperEntity(name) {
-    if (!this._hass || !name) return null;
-    const wanted = PoolTimerCard.PRESET_PREFIX + name;
-    for (const [eid, st] of Object.entries(this._hass.states)) {
-      if (!eid.startsWith('input_text.')) continue;
-      if (st.attributes && st.attributes.friendly_name === wanted) return eid;
-    }
-    return null;
+    return presetHelperEntity(this._hass, name);
   }
 
   // The preset list. With `preset_entity` configured the server owns it; without
@@ -1124,7 +1194,7 @@ class PoolTimerCard extends HTMLElement {
           .map(s => (s ? '1' : '0')).join('');
         if (bits.length !== SEGMENT_COUNT) continue;
         defs.push({ byName: p.name, domain: 'input_text',
-          create: { name: PoolTimerCard.PRESET_PREFIX + p.name,
+          create: { name: PRESET_PREFIX + p.name,
                     min: 0, max: 255, mode: 'text' },
           seed: bits });
       }
@@ -1146,16 +1216,9 @@ class PoolTimerCard extends HTMLElement {
     return { missing, maxTooSmall, canFix };
   }
 
-  // entity_id of a helper from its collection id. For these helpers the registry's
-  // `unique_id` IS the collection id. Verified on a live instance that neither the
-  // collection id nor a slug of the name predicts the entity_id — an input_select
-  // with id "integracionalarmaajax" lives at input_select.integracion_alarma_ajax —
-  // so the registry is the only correct lookup.
   async _entityIdForCollectionId(domain, collectionId) {
     try {
-      const reg = await this._hass.callWS({ type: 'config/entity_registry/list' });
-      const hit = (reg || []).find(e => e.platform === domain && e.unique_id === collectionId);
-      return hit ? hit.entity_id : null;
+      return await entityIdForCollectionId(this._hass, domain, collectionId);
     } catch (e) {
       console.error('[pool-timer-card] entity registry lookup failed:', e);
       return null;
@@ -2069,24 +2132,65 @@ class PoolTimerCardEditor extends HTMLElement {
   }
 
   _renderPresets() {
-    const presets = this._config.presets || DEFAULT_PRESETS;
+    const selEnt = this._config.preset_entity;
+    const sel = selEnt ? this._hass?.states[selEnt] : null;
+
+    // Not migrated yet: presets still live in the YAML and are edited there.
+    if (!sel) {
+      const presets = this._config.presets || DEFAULT_PRESETS;
+      const header = `
+        <div class="list-header preset-header">
+          <span>Name</span>
+          <span>Time ranges</span>
+          <span></span>
+        </div>
+      `;
+      const hint = selEnt
+        ? `<div class="preset-hint">${escapeHtml(selEnt)} does not exist yet — use
+           "Create helpers" on the card to move these presets to the server.</div>`
+        : `<div class="preset-hint">Set <code>preset_entity</code> to store presets on
+           the server, where automations and the blueprint can read them.</div>`;
+      return hint + header + presets.map((preset, idx) => `
+        <div class="list-item preset-item">
+          <input type="text" class="preset-name" data-idx="${idx}" value="${escapeHtml(preset.name)}"
+            placeholder="Verano" />
+          <input type="text" class="preset-schedule" data-idx="${idx}"
+            value="${escapeHtml(preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : '')}"
+            placeholder="08:00-13:00, 16:00-20:00" />
+          <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
+        </div>
+      `).join('');
+    }
+
+    // Server-side presets. The name is read-only on purpose: renaming would mean
+    // deleting and recreating the helper, and doing that on every keystroke would
+    // destroy data. Renaming is "delete and create", documented as such.
+    const nombres = (sel.attributes.options || []).filter(n => n !== 'Custom');
     const header = `
       <div class="list-header preset-header">
         <span>Name</span>
-        <span>Time ranges</span>
+        <span>Schedule (48 × 0/1)</span>
         <span></span>
       </div>
     `;
-    return header + presets.map((preset, idx) => `
-      <div class="list-item preset-item">
-        <input type="text" class="preset-name" data-idx="${idx}" value="${escapeHtml(preset.name)}"
-          placeholder="Verano" />
-        <input type="text" class="preset-schedule" data-idx="${idx}"
-          value="${escapeHtml(preset.schedule ? preset.schedule.map(r => r.start + '-' + r.end).join(', ') : '')}"
-          placeholder="08:00-13:00, 16:00-20:00" />
-        <button class="btn-delete" type="button" data-idx="${idx}" tabindex="-1">✕</button>
-      </div>
-    `).join('');
+    const filas = nombres.map(name => {
+      const eid = presetHelperEntity(this._hass, name);
+      const val = eid ? (this._hass.states[eid]?.state || '') : '';
+      return `
+        <div class="list-item preset-item">
+          <input type="text" class="preset-name" value="${escapeHtml(name)}" readonly
+            title="Renaming means delete + create" />
+          <input type="text" class="preset-bits" data-name="${escapeHtml(name)}"
+            value="${escapeHtml(val)}" ${eid ? '' : 'disabled'}
+            placeholder="${eid ? '48 × 0/1' : 'helper missing — run Create helpers'}" />
+          <button class="btn-delete" type="button" data-name="${escapeHtml(name)}"
+            tabindex="-1" title="Delete preset and its helper">✕</button>
+        </div>
+      `;
+    }).join('');
+    return `<div class="preset-hint">Stored in ${escapeHtml(selEnt)} and one
+            input_text per preset. Deleting one deletes its helper too.</div>`
+      + header + (filas || '<div class="preset-hint">No presets yet.</div>');
   }
 
   _renderCornerActions() {
@@ -2197,6 +2301,34 @@ class PoolTimerCardEditor extends HTMLElement {
           grid-template-columns: 1fr 1.6fr 28px;
           gap: 6px;
           align-items: center;
+        }
+        .preset-hint {
+          font-size: 12px;
+          opacity: 0.75;
+          margin: 4px 0 8px;
+          line-height: 1.4;
+        }
+        .preset-name[readonly] {
+          opacity: 0.75;
+          cursor: default;
+        }
+        /* The 48-char field is the one place a typo silently changes the pump's
+           schedule, so it gets a monospace face where miscounting is visible. */
+        .preset-bits {
+          font-family: 'Consolas', 'Menlo', monospace;
+          font-size: 11px;
+          letter-spacing: 0.5px;
+        }
+        .preset-bits:disabled { opacity: 0.5; }
+        .new-preset-name {
+          width: 100%;
+          margin-bottom: 6px;
+        }
+        .preset-error {
+          font-size: 12px;
+          color: #FF3B30;
+          margin: 4px 0 6px;
+          line-height: 1.4;
         }
 
         /* Corner actions: two rows per item (name/position, then target). */
@@ -2340,6 +2472,11 @@ class PoolTimerCardEditor extends HTMLElement {
           <div id="presets-list">
             ${this._renderPresets()}
           </div>
+          ${this._presetError
+            ? `<div class="preset-error">${escapeHtml(this._presetError)}</div>` : ''}
+          ${(this._config.preset_entity && this._hass?.states[this._config.preset_entity])
+            ? `<input type="text" id="new-preset-name" class="new-preset-name"
+                 placeholder="New preset name" />` : ''}
           <button class="btn-add" id="btn-add-preset">+ Add Preset</button>
         </div>
 
@@ -2413,8 +2550,28 @@ class PoolTimerCardEditor extends HTMLElement {
       });
     }
 
-    // Presets - edit
-    root.querySelectorAll('.preset-name, .preset-schedule').forEach(input => {
+    // Presets - server-side: write the 48-char schedule straight to its helper.
+    //
+    // Listen on `change`, never on `input`, and validate before writing. On `input`
+    // every keystroke would push a half-typed string into the helper, and if that
+    // preset is the selected one the blueprint would apply it to the pump.
+    root.querySelectorAll('.preset-bits').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const bits = e.target.value.trim();
+        if (!new RegExp(`^[01]{${SEGMENT_COUNT}}$`).test(bits)) {
+          e.target.setCustomValidity(`Must be exactly ${SEGMENT_COUNT} characters of 0 or 1`);
+          e.target.reportValidity();
+          return;
+        }
+        e.target.setCustomValidity('');
+        const eid = presetHelperEntity(this._hass, e.target.dataset.name);
+        if (eid) this._hass.callService('input_text', 'set_value',
+          { entity_id: eid, value: bits });
+      });
+    });
+
+    // Presets - YAML fallback (pre-migration only)
+    root.querySelectorAll('.preset-name:not([readonly]), .preset-schedule').forEach(input => {
       input.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.idx, 10);
         // Deep clone: `presets[idx].name = ...` below would otherwise mutate the object
@@ -2437,21 +2594,66 @@ class PoolTimerCardEditor extends HTMLElement {
     // Presets - delete (use event delegation)
     const presetsList = root.getElementById('presets-list');
     if (presetsList) {
-      presetsList.addEventListener('click', (e) => {
-        if (e.target.classList.contains('btn-delete')) {
-          e.stopPropagation();
-          const idx = parseInt(e.target.dataset.idx, 10);
-          const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
-          presets.splice(idx, 1);
-          this._updateConfig({ presets });
+      presetsList.addEventListener('click', async (e) => {
+        if (!e.target.classList.contains('btn-delete')) return;
+        e.stopPropagation();
+        const name = e.target.dataset.name;
+        if (name !== undefined) {
+          // Server-side delete removes the option AND its helper, so it destroys the
+          // schedule. Two clicks to confirm, in place: a confirm() dialog blocks the
+          // page and cannot be driven by automation, which would leave the most
+          // destructive action in this editor as the only unverified one.
+          if (e.target.dataset.armed !== '1') {
+            e.target.dataset.armed = '1';
+            e.target.textContent = '✕?';
+            e.target.title = `Click again to delete "${name}" and its helper`;
+            setTimeout(() => {
+              if (!e.target.isConnected) return;
+              e.target.dataset.armed = '0';
+              e.target.textContent = '✕';
+            }, 4000);
+            return;
+          }
+          try {
+            await deletePreset(this._hass, this._config.preset_entity, name);
+            this._presetError = null;
+          } catch (err) {
+            this._presetError = `Could not delete "${name}": ${err.message || err}`;
+          }
+          this._render();
+          return;
         }
+        const idx = parseInt(e.target.dataset.idx, 10);
+        const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
+        presets.splice(idx, 1);
+        this._updateConfig({ presets });
       }, true);  // Use capture phase
     }
 
     // Presets - add
     const addPresetBtn = root.getElementById('btn-add-preset');
     if (addPresetBtn) {
-      addPresetBtn.addEventListener('click', () => {
+      addPresetBtn.addEventListener('click', async () => {
+        const selEnt = this._config.preset_entity;
+        if (selEnt && this._hass?.states[selEnt]) {
+          // Inline field rather than prompt(): a modal dialog blocks the page and
+          // cannot be exercised by automation, so it could not be verified.
+          const field = root.getElementById('new-preset-name');
+          const name = field ? field.value.trim() : '';
+          if (!name) {
+            this._presetError = 'Type a name for the new preset first';
+            this._render();
+            return;
+          }
+          try {
+            await createPreset(this._hass, selEnt, name);
+            this._presetError = null;
+          } catch (err) {
+            this._presetError = `Could not create "${name}": ${err.message || err}`;
+          }
+          this._render();
+          return;
+        }
         const presets = cloneConfigData(this._config.presets || DEFAULT_PRESETS);
         presets.push({ name: 'New Preset', schedule: [{ start: '10:00', end: '16:00' }] });
         this._updateConfig({ presets });
