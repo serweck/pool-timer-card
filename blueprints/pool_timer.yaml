@@ -45,6 +45,21 @@ blueprint:
         entity:
           filter:
             - domain: input_text
+    preset_select:
+      name: Preset helper (optional)
+      description: >
+        The input_select whose options are your preset names (card preset_entity).
+        Leave empty if you have not moved presets to the server yet.
+
+        When set, selecting an option applies that preset's schedule server-side,
+        so automations can switch presets with no dashboard open. The schedule for
+        each preset lives in an input_text named "Pool Timer Preset <name>".
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: input_select
 
 # 'restart' so each minute cancels any still-running (e.g. hung switch call) run
 # and re-evaluates cleanly. 'single' would silently drop every tick while a prior
@@ -58,6 +73,21 @@ trigger:
   # ...and right after a restart so the pump is corrected immediately on boot.
   - platform: homeassistant
     event: start
+  # ...and the moment a preset is selected, so the schedule follows immediately.
+  #
+  # This is edge-triggered on purpose. Checking "does the schedule match the
+  # selected preset?" on the minute tick instead would mean that painting a new
+  # schedule while the selector still said 'Verano' got reverted a minute later —
+  # the blueprint would fight the user. Acting only on a *change* of selection
+  # leaves the schedule alone the rest of the time.
+  #
+  # `preset_select` is a LIST (default []) rather than a single entity because an
+  # unset single-entity input renders as an empty entity_id, which is invalid here
+  # and would stop the whole automation from loading for everyone who has not
+  # migrated. An empty list is accepted and simply never fires.
+  - platform: state
+    entity_id: !input preset_select
+    id: preset_selected
 
 variables:
   # Plain (non-templated) inputs only. Everything else is self-contained below.
@@ -65,6 +95,7 @@ variables:
   sched_e: !input schedule_helper
   mode_e: !input mode_helper
   state_e: !input state_helper
+  preset_list: !input preset_select
 
   # Desired pump state: running action -> settling -> base mode/schedule.
   desired: >
@@ -119,6 +150,50 @@ variables:
         'until': 0, 'ret': st.ret if 'ret' in st else 'Auto', 'after': 'Auto'} | to_json }}
 
 action:
+  # 0) A preset was selected: expand it into the schedule helper.
+  #
+  # Self-contained like every other template here: it re-derives everything from
+  # the plain inputs. Do not refactor it to share intermediate variables — the
+  # note at the top of this file is not decoration.
+  #
+  # Guards, each of which prevents a way this could wreck the pump's schedule:
+  #   - only on the preset trigger, never on the minute tick
+  #   - 'Custom' is not a preset, it is the absence of a match: no-op
+  #   - the helper is found by friendly name, because the entity_id of a helper is
+  #     not derivable from anything (verified: a helper whose collection id is
+  #     "integracionalarmaajax" lives at input_select.integracion_alarma_ajax)
+  #   - it must be exactly 48 characters of 0/1. A freshly created or half-typed
+  #     helper would otherwise be applied to the pump verbatim
+  #   - and it must actually differ, so this never ping-pongs with the card
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: preset_selected
+          - condition: template
+            value_template: >
+              {% set pl = preset_list %}
+              {% set pe = (pl | first) if (pl is iterable and pl is not string and pl | count > 0) else (pl if pl is string else '') %}
+              {% set sel = states(pe) if pe else '' %}
+              {% set bits = states.input_text
+                   | selectattr('attributes.friendly_name', 'defined')
+                   | selectattr('attributes.friendly_name', 'eq', 'Pool Timer Preset ' ~ sel)
+                   | map(attribute='state') | list | first | default('') %}
+              {{ pe != '' and sel not in ['', 'Custom', 'unknown', 'unavailable']
+                 and bits is match('^[01]{48}$') and bits != states(sched_e) }}
+        sequence:
+          - service: input_text.set_value
+            target:
+              entity_id: !input schedule_helper
+            data:
+              value: >
+                {% set pl = preset_list %}
+                {% set pe = (pl | first) if (pl is iterable and pl is not string and pl | count > 0) else (pl if pl is string else '') %}
+                {% set sel = states(pe) if pe else '' %}
+                {{ states.input_text
+                     | selectattr('attributes.friendly_name', 'defined')
+                     | selectattr('attributes.friendly_name', 'eq', 'Pool Timer Preset ' ~ sel)
+                     | map(attribute='state') | list | first | default('') }}
+
   # 1) Persist any just-expired timed-action transition back into the state helper.
   - choose:
       - conditions: "{{ to_settling }}"
