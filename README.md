@@ -397,6 +397,94 @@ presets:
 > up on the dial and read the current value of `input_text.pool_timer_schedule` in
 > **Developer tools → States**, then paste it into your automation.
 
+### Alternating between two schedules (weekday / weekend)
+
+A common need: run a longer schedule at the weekend and a shorter one on working
+days — but only while you are in "summer", leaving your winter schedule alone.
+
+```yaml
+alias: Pool - summer schedule (short on weekdays, long at the weekend)
+description: >-
+  Alternates between the two summer schedules. Only acts when the current
+  schedule is already one of them, so a winter or hand-drawn schedule is left
+  untouched.
+
+variables:
+  # 10:00-13:00 and 16:00-18:30
+  summer_short: "000000000000000000001111110000001111100000000000"
+  # 10:00-14:00 and 16:00-19:30
+  summer_long:  "000000000000000000001111111100001111111000000000"
+
+triggers:
+  - trigger: time
+    at: "00:00:00"
+  - trigger: homeassistant
+    event: start
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ states('input_text.pool_timer_schedule') in [summer_short, summer_long] }}
+
+actions:
+  - choose:
+      - conditions:
+          - condition: time
+            weekday: [sat, sun]
+        sequence:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.pool_timer_schedule
+            data:
+              value: "{{ summer_long }}"
+      - conditions:
+          - condition: time
+            weekday: [mon, tue, wed, thu, fri]
+        sequence:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.pool_timer_schedule
+            data:
+              value: "{{ summer_short }}"
+
+mode: single
+```
+
+#### Why it is written this way
+
+**It compares the schedule string, not the preset name.** The state helper does carry
+a `preset` field, but since 2.9.5 that name is *derived by the card* for display only —
+with no dashboard open nothing keeps it up to date, so an automation that reads it will
+eventually act on a stale value. The 48-character schedule is the source of truth.
+
+**It runs every day at 00:00 and on Home Assistant start, not only on the two switch
+days.** On the other days it writes the value that is already there, which is a no-op.
+What this buys you is self-healing: if Home Assistant restarts on a Wednesday, or you
+change something by hand, you are back in sync at the next midnight instead of staying
+wrong until the following Monday.
+
+**The condition is what makes it safe.** Without it, this automation would drag you back
+into a summer schedule every night no matter what you had selected. With it, selecting
+`Invierno` or drawing your own schedule simply opts you out until you pick a summer
+schedule again.
+
+**No variable references another variable.** Each `choose` branch reads a single
+top-level variable. Chained variables (`target: "{{ summer_long if ... }}"`) fail to
+render on some Home Assistant versions and abort the run silently — the same trap the
+blueprint warns about in its own comments.
+
+> [!TIP]
+> Make the two strings **exactly** match presets you have configured. When they do, the
+> card's dropdown shows `Verano` or `Verano corto` after the automation runs; when they
+> don't, it shows **Custom** — which is correct, but tells you your automation and your
+> presets have drifted apart.
+
+> [!NOTE]
+> The schedule string is duplicated between your `presets:` config and this automation,
+> and nothing keeps the two in sync: editing a preset on the dial will not change what
+> this automation applies. Until presets are stored server-side, treat the automation as
+> the place you must remember to update too.
+
 ## Required: install the blueprint (browser-independent operation)
 
 The card is the **UI**; the actual pump control runs **server-side** in Home
