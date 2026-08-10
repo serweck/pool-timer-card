@@ -69,7 +69,17 @@
     <div class="wrap"><pool-timer-card id="cardDark"></pool-timer-card></div>
   </section>
 
-  <script src="pool-timer-card.js"></script>
+  <script>
+    // Load the card with a cache-busting query. `python -m http.server` sends no
+    // cache headers, so the browser happily serves a stale pool-timer-card.js and
+    // every check in this harness silently passes against old code.
+    (function () {
+      const s = document.createElement('script');
+      s.src = 'pool-timer-card.js?t=' + Date.now();
+      s.onload = () => window.__initPreview();
+      document.head.appendChild(s);
+    })();
+  </script>
   <script>
     const CONFIG = {
       entity: 'switch.pool_pump',
@@ -152,11 +162,13 @@
       return hass;
     }
 
-    for (const [id, dark] of [['cardLight', false], ['cardDark', true]]) {
-      const card = document.getElementById(id);
-      card.setConfig(JSON.parse(JSON.stringify(CONFIG)));
-      card.hass = makeHass(dark);
-    }
+    window.__initPreview = function () {
+      for (const [id, dark] of [['cardLight', false], ['cardDark', true]]) {
+        const card = document.getElementById(id);
+        card.setConfig(JSON.parse(JSON.stringify(CONFIG)));
+        card.hass = makeHass(dark);
+      }
+    };
   </script>
 </body>
 </html>

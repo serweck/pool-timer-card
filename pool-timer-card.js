@@ -910,19 +910,67 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
-  // Compute the 48-segment boolean array a preset represents, from either its
-  // explicit `segments` bitstring or its `schedule` ranges.
+  // Friendly-name prefix every preset helper is created with.
+  //
+  // The link between a preset and its helper is the NAME, never the entity_id.
+  // Home Assistant does not guarantee that an entity_id is derivable from either
+  // the collection id or the name: an input_select whose collection id is
+  // "integracionalarmaajax" lives at input_select.integracion_alarma_ajax. Matching
+  // by friendly name also removes the slug-collision problem entirely ("Verano 1"
+  // and "Verano-1" slugify the same but are distinct names).
+  static get PRESET_PREFIX() { return 'Pool Timer Preset '; }
+
+  // entity_id of the input_text holding `name`'s schedule, or null when absent.
+  _presetHelperEntity(name) {
+    if (!this._hass || !name) return null;
+    const wanted = PoolTimerCard.PRESET_PREFIX + name;
+    for (const [eid, st] of Object.entries(this._hass.states)) {
+      if (!eid.startsWith('input_text.')) continue;
+      if (st.attributes && st.attributes.friendly_name === wanted) return eid;
+    }
+    return null;
+  }
+
+  // The preset list. With `preset_entity` configured the server owns it; without
+  // it we fall back to the YAML so installs that have not migrated keep working.
+  // Entity-backed presets carry `entity` (possibly null = helper missing); YAML
+  // ones carry `fromConfig` and no `entity` key at all — _segmentsForPreset and
+  // the dropdown both rely on that distinction.
+  _presets() {
+    const sel = this._config.preset_entity
+      ? this._hass?.states[this._config.preset_entity]
+      : null;
+    if (!sel) {
+      return (this._config.presets || []).map(p => ({ name: p.name, fromConfig: p }));
+    }
+    return (sel.attributes.options || [])
+      .filter(n => n !== 'Custom')
+      .map(name => ({ name, entity: this._presetHelperEntity(name) }));
+  }
+
+  // Compute the 48-segment boolean array a preset represents: from its helper when
+  // the preset is entity-backed, otherwise from its `segments` bitstring or
+  // `schedule` ranges in the YAML.
   _segmentsForPreset(preset) {
     if (!preset) return null;
-    return preset.segments
-      ? String(preset.segments).split('').map(c => c === '1')
-      : this._rangesToSegments(preset.schedule);
+    if (preset.entity !== undefined) {
+      const raw = preset.entity ? this._hass?.states[preset.entity]?.state : null;
+      // A freshly created helper is empty. Without this guard ''.split('') yields a
+      // zero-length array that _findMatchingPreset then compares against 48
+      // segments, matching unpredictably.
+      if (!raw || !new RegExp(`^[01]{${SEGMENT_COUNT}}$`).test(raw)) return null;
+      return raw.split('').map(c => c === '1');
+    }
+    const p = preset.fromConfig || preset;
+    return p.segments
+      ? String(p.segments).split('').map(c => c === '1')
+      : this._rangesToSegments(p.schedule);
   }
 
   // Return the name of the preset whose schedule matches the current segments
   // exactly, or null if none match (i.e. the schedule is genuinely "Custom").
   _findMatchingPreset() {
-    for (const p of (this._config.presets || [])) {
+    for (const p of this._presets()) {
       const segs = this._segmentsForPreset(p);
       if (!segs || segs.length !== this._segments.length) continue;
       if (segs.every((v, i) => !!v === !!this._segments[i])) return p.name;
@@ -1221,7 +1269,7 @@ class PoolTimerCard extends HTMLElement {
     }
 
     /* ---- presets, quick actions & action banner ---- */
-    const presets = this._config.presets || [];
+    const presets = this._presets();
     const hasPresets = presets.length > 0;
     const quickActions = this._config.quick_actions || [];
     const hasActions = quickActions.length > 0;
@@ -1229,9 +1277,14 @@ class PoolTimerCard extends HTMLElement {
     const presetsHTML = hasPresets
       ? `<select class="preset-select" data-select="preset">
           <option value="">Custom</option>
-          ${presets.map(p =>
-            `<option value="${escapeHtml(p.name)}" ${this._preset === p.name ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
-          ).join('')}
+          ${presets.map(p => {
+            // `entity === null` means the option exists in the input_select but its
+            // helper does not. Showing it disabled is deliberate: hiding it would be
+            // baffling (you added it in Settings and it never appeared), and
+            // selecting it would apply an empty schedule.
+            const falta = p.entity === null;
+            return `<option value="${escapeHtml(p.name)}" ${falta ? 'disabled' : ''} ${this._preset === p.name ? 'selected' : ''}>${escapeHtml(p.name)}${falta ? ' ⚠' : ''}</option>`;
+          }).join('')}
         </select>`
       : '';
 
