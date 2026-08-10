@@ -473,9 +473,16 @@ class PoolTimerCard extends HTMLElement {
     // helper directly: that changes the segments, not the label. Re-derive the label
     // from the segments so the dropdown always reflects what is actually scheduled.
     // Must run AFTER the state block above, which would otherwise overwrite it.
-    // Derivation only — this never writes back to Home Assistant.
+    //
+    // With `preset_entity` configured the derived label is also pushed back to that
+    // entity, so the server reflects what is actually scheduled even when something
+    // other than the card changed it. _syncPresetEntity is a no-op without
+    // `preset_entity`, so un-migrated installs keep the old derivation-only
+    // behaviour. This cannot loop: the write is conditional on the value differing,
+    // and the resulting state change derives the same label again.
     if (!this._dragging) {
       this._preset = this._findMatchingPreset();
+      this._syncPresetEntity(this._preset);
     }
 
     // Avoid re-rendering during drag or while a select is open
@@ -893,6 +900,7 @@ class PoolTimerCard extends HTMLElement {
     this._preset = this._findMatchingPreset();
     this._saveSchedule();       // authoritative, immediate write
     this._saveState();          // persist the preset/custom state
+    this._syncPresetEntity(this._preset);   // null → 'Custom'
     this._evaluateSchedule();   // apply the new schedule to the pump now
     this._render();             // safe to fully refresh now the gesture ended
   }
