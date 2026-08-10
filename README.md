@@ -228,15 +228,43 @@ Nothing breaks if you never migrate: without `preset_entity` the card reads
 #### Managing presets
 
 With `preset_entity` set, the card's visual editor can add, edit and delete
-presets. Adding creates the option and its helper; deleting removes **both**.
+presets.
 
-The name is read-only there. Renaming would mean deleting and recreating the
-helper, so rename by deleting the preset and creating it again.
+**Schedules are edited as time ranges**, the same notation the YAML `presets:` uses:
+
+```
+10:00-14:00, 16:00-19:30
+```
+
+The card converts to and from the stored 48-character string for you. Two things
+follow from that conversion, both deliberate:
+
+- Times snap to half hours, and the field **re-renders from what was actually
+  stored**. Type `10:15-14:20` and it comes back as `10:00-14:00` — showing you the
+  schedule the pump will follow rather than the one you typed.
+- Input that does not parse is rejected before anything is written, so a half-typed
+  range never reaches the helper, and from there the pump.
+
+A range crossing midnight round-trips intact: `23:00-01:00` stays one range.
+
+**Adding** a preset creates the option and its helper, seeded with the schedule
+currently on the dial — so "+ Add Preset" means "save what I have".
+
+**Deleting** takes two clicks and removes the option **and its helper**, so obsolete
+helpers do not pile up.
+
+The name is read-only. Renaming would mean deleting and recreating the helper, so
+rename by deleting the preset and creating it again.
 
 > [!TIP]
-> An option whose helper is missing shows greyed out with a ⚠ and cannot be
-> selected — selecting it would apply an empty schedule. Press **Create helpers**
-> to create what is missing.
+> An option whose helper is missing, empty or malformed shows greyed out with a ⚠ and
+> cannot be selected — selecting it would apply nothing while looking like it worked.
+> Press **Create helpers** to create what is missing, or fill in its schedule.
+
+> [!WARNING]
+> Removing an option from **Settings → Helpers** instead of from the card's editor
+> leaves its `input_text` behind. Home Assistant has no idea the two are related — only
+> the card's ✕ button knows to delete both.
 
 ### Editing on touch devices
 
