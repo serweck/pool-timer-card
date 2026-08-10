@@ -77,9 +77,17 @@
       schedule_entity: 'input_text.pool_timer_schedule',
       mode_entity: 'input_select.pool_timer_mode',
       state_entity: 'input_text.pool_timer_state',
+      preset_entity: 'input_select.pool_timer_preset',
       schedule: [
         { start: '08:00', end: '13:00' },
         { start: '16:00', end: '20:00' },
+      ],
+      // Kept so the auto-setup migration seed has something to read. Once
+      // `preset_entity` exists these are NOT the live source any more.
+      presets: [
+        { name: 'Verano',       schedule: [{ start: '10:00', end: '14:00' }, { start: '16:00', end: '19:30' }] },
+        { name: 'Invierno',     schedule: [{ start: '11:00', end: '11:30' }] },
+        { name: 'Verano corto', schedule: [{ start: '10:00', end: '13:00' }, { start: '16:00', end: '18:30' }] },
       ],
       corner_actions: [
         { name: 'Calentador', icon: '🔥', position: 'tl', service: 'switch', entity_id: 'switch.pool_heater', action: 'toggle' },
@@ -102,10 +110,43 @@
                                                 attributes: { max: 255 } },
           'input_select.pool_timer_mode':     { state: 'Auto', entity_id: 'input_select.pool_timer_mode',
                                                 attributes: { options: ['Auto', 'Perm', 'OFF'] } },
+
+          // --- Server-side presets ---------------------------------------
+          // The options ARE the preset list. 'Custom' is not a preset: it is the
+          // absence of a match, and the blueprint ignores it.
+          'input_select.pool_timer_preset':   { state: 'Verano corto',
+                                                entity_id: 'input_select.pool_timer_preset',
+                                                attributes: { friendly_name: 'Pool Timer Preset',
+                                                  // 'Fiesta' exists ONLY here, not in the YAML presets:
+                                                  // it is the unambiguous proof of which source is in use.
+                                                  options: ['Custom', 'Verano', 'Invierno', 'Verano corto', 'Fiesta'] } },
+
+          // The link is the friendly name, never the entity_id. The entity ids here
+          // are deliberately NOT the slug of the name, to catch any code that tries
+          // to derive one from the other.
+          'input_text.ptp_a1b2':              { state: '000000000000000000001111111100001111111000000000',
+                                                entity_id: 'input_text.ptp_a1b2',
+                                                attributes: { friendly_name: 'Pool Timer Preset Verano', max: 255 } },
+          'input_text.ptp_c3d4':              { state: '000000000000000000000011000000000000000000000000',
+                                                entity_id: 'input_text.ptp_c3d4',
+                                                attributes: { friendly_name: 'Pool Timer Preset Invierno', max: 255 } },
+          'input_text.ptp_e5f6':              { state: '000000000000000000000000000000000000111111111111',
+                                                entity_id: 'input_text.ptp_e5f6',
+                                                attributes: { friendly_name: 'Pool Timer Preset Fiesta', max: 255 } },
+          // 'Verano corto' has NO helper on purpose: that is the "missing helper"
+          // scenario its option must render disabled.
         },
         user: { is_admin: true },
         callService: (domain, service, data) => {
+          const call = { domain, service, data };
+          (window.__llamadas = window.__llamadas || []).push(call);
           console.log(`[HA Stub ${darkMode ? 'dark' : 'light'}] ${domain}.${service}`, data);
+          return Promise.resolve();
+        },
+        callWS: (msg) => {
+          (window.__ws = window.__ws || []).push(msg);
+          console.log('[HA Stub callWS]', msg);
+          return Promise.resolve([]);
         },
       };
       return hass;
