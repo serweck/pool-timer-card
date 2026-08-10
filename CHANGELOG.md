@@ -4,6 +4,30 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.1] - 2026-08-10
+
+### Fixed
+- **Creating a preset from the editor produced one you could select but that did
+  nothing.** The new `input_text` was created empty, and the card only treated a
+  *missing* helper as unusable — an existing-but-empty one rendered as a normal,
+  selectable option. Selecting it silently applied nothing. Empty and malformed
+  helpers are now treated exactly like missing ones: the option is disabled and marked
+  with a warning, and it re-enables by itself the moment the helper holds a valid
+  48-character schedule.
+
+- **The preset dropdown did not repaint when a preset was added or removed.** Creating
+  or deleting one changes only the `input_select`'s *options*, and the render
+  fingerprint did not cover them, so the new preset appeared only after some unrelated
+  state changed. The fingerprint now includes the preset list and each preset's
+  usability. This is the same trap the theme fix in 2.9.6 had to close, in a second
+  place.
+
+### Changed
+- **"+ Add Preset" now saves the schedule currently in force.** Created empty, a preset
+  was unusable until you hand-typed 48 characters into the editor — a button that looked
+  like it worked and did not. Seeding it from the dial makes adding a preset mean "save
+  what I have", which is what pressing it is for.
+
 ## [2.10.0] - 2026-08-10
 
 ### Added

@@ -342,8 +342,14 @@ async function collectionIdForEntity(hass, entityId) {
   return hit ? hit.unique_id : null;
 }
 
-// Add a preset: a new option on the input_select plus its own input_text.
-async function createPreset(hass, selectEntity, name) {
+// Add a preset: a new option on the input_select plus its own input_text, seeded
+// with `seedBits` when given.
+//
+// Seeding matters. Created empty, the preset shows up disabled and unusable until
+// you hand-type 48 characters — a button that appears to work and does nothing.
+// Seeding it with the schedule currently on the dial makes "+ Add Preset" mean
+// "save what I have as a preset", which is what pressing it is meant to do.
+async function createPreset(hass, selectEntity, name, seedBits) {
   const clean = String(name || '').trim();
   if (!clean) throw new Error('The preset needs a name');
   if (clean === 'Custom') throw new Error('"Custom" is reserved — it is the absence of a match');
@@ -356,8 +362,16 @@ async function createPreset(hass, selectEntity, name) {
   if (!selId) throw new Error(`Could not resolve ${selectEntity} in the entity registry`);
   await hass.callWS({ type: 'input_select/update', input_select_id: selId,
     name: sel.attributes.friendly_name, options: [...options, clean] });
-  await hass.callWS({ type: 'input_text/create',
+  const creado = await hass.callWS({ type: 'input_text/create',
     name: PRESET_PREFIX + clean, min: 0, max: 255, mode: 'text' });
+
+  if (seedBits && /^[01]+$/.test(seedBits) && creado && creado.id) {
+    const eid = await entityIdForCollectionId(hass, 'input_text', creado.id);
+    if (eid) {
+      await hass.callService('input_text', 'set_value',
+        { entity_id: eid, value: seedBits });
+    }
+  }
 }
 
 // Remove a preset AND its helper. Leaving the helper behind is what would produce
@@ -615,6 +629,12 @@ class PoolTimerCard extends HTMLElement {
       // Without this a theme switch would not change the fingerprint and the
       // card would keep the old palette until some unrelated state changed.
       this._isDark() ? 'd' : 'l',
+      // Same trap, second time: creating or deleting a preset changes only the
+      // input_select's OPTIONS, not any state this fingerprint already covered, so
+      // the dropdown did not repaint until something unrelated happened. Usability
+      // is included too, so a preset becomes selectable the moment its helper is
+      // filled in.
+      this._presets().map(p => `${p.name}:${p.usable === false ? 0 : 1}`).join(','),
     ];
     // Include corner action states so the card re-renders when a corner entity changes.
     for (let i = 0; i < (this._config.corner_actions || []).length; i++) {
@@ -1023,7 +1043,15 @@ class PoolTimerCard extends HTMLElement {
     }
     return (sel.attributes.options || [])
       .filter(n => n !== 'Custom')
-      .map(name => ({ name, entity: this._presetHelperEntity(name) }));
+      .map(name => {
+        const entity = this._presetHelperEntity(name);
+        const raw = entity ? this._hass.states[entity]?.state : null;
+        // `usable` is NOT the same as "the helper exists". A preset created from the
+        // editor starts with an empty helper, and an empty one is just as unusable as
+        // a missing one — it must not be offered as if it worked.
+        const usable = !!raw && new RegExp(`^[01]{${SEGMENT_COUNT}}$`).test(raw);
+        return { name, entity, usable };
+      });
   }
 
   // Compute the 48-segment boolean array a preset represents: from its helper when
@@ -1430,11 +1458,11 @@ class PoolTimerCard extends HTMLElement {
       ? `<select class="preset-select" data-select="preset">
           <option value="">Custom</option>
           ${presets.map(p => {
-            // `entity === null` means the option exists in the input_select but its
-            // helper does not. Showing it disabled is deliberate: hiding it would be
-            // baffling (you added it in Settings and it never appeared), and
-            // selecting it would apply an empty schedule.
-            const falta = p.entity === null;
+            // Entity-backed preset with no usable schedule: either the helper is
+            // missing, or it exists but is empty / malformed. Both are shown disabled.
+            // Hiding them would be baffling (you added it and it never appeared), and
+            // selecting one would apply nothing while looking like it worked.
+            const falta = p.entity !== undefined && !p.usable;
             return `<option value="${escapeHtml(p.name)}" ${falta ? 'disabled' : ''} ${this._preset === p.name ? 'selected' : ''}>${escapeHtml(p.name)}${falta ? ' ⚠' : ''}</option>`;
           }).join('')}
         </select>`
@@ -2645,8 +2673,12 @@ class PoolTimerCardEditor extends HTMLElement {
             this._render();
             return;
           }
+          // Seed from the schedule currently in force, so the new preset is usable
+          // immediately instead of arriving empty and disabled.
+          const actual = this._hass.states[this._config.schedule_entity]?.state || '';
+          const semilla = /^[01]+$/.test(actual) ? actual : null;
           try {
-            await createPreset(this._hass, selEnt, name);
+            await createPreset(this._hass, selEnt, name, semilla);
             this._presetError = null;
           } catch (err) {
             this._presetError = `Could not create "${name}": ${err.message || err}`;
@@ -2718,7 +2750,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.10.0 ',
+  '%c POOL-TIMER-CARD %c v2.10.1 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
