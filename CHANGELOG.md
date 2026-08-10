@@ -4,6 +4,41 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.9.6] - 2026-08-10
+
+### Fixed
+- **The card was painted black in the light theme, with near-black text on top of it.**
+  The card background was declared as `var(--ha-card-background, #1C1C1E)`, but Home
+  Assistant does **not** define `--ha-card-background` in its stock light theme — the
+  variable is simply absent, so the declaration always fell through to its dark literal.
+  Meanwhile `--primary-text-color` *is* defined and resolves to `#141414` there, which is
+  how the card ended up rendering dark grey text on a black panel. The background now
+  chains through `--card-background-color` (which HA does define) before reaching any
+  literal.
+
+### Changed
+- **The card follows the Home Assistant theme.** Fixing the background alone would have
+  left a white card carrying navy "off" segments, charcoal borders and dark dropdowns, so
+  the whole palette is now theme-aware. `COLORS` became `PALETTE_DARK` / `PALETTE_LIGHT`,
+  selected per render from `hass.themes.darkMode` — which is how HA reports the *resolved*
+  theme, so "auto" correctly follows the operating system. Outside Home Assistant (the
+  standalone preview) it falls back to `prefers-color-scheme`. **The dark palette is
+  unchanged**, down to the hex values.
+  - Colours that were hardcoded in the stylesheet moved into the palette too: control
+    hover states, `<option>` backgrounds, the knob gradients and its ridges, and the
+    shadows — which are much softer in the light theme, where a heavy drop shadow reads
+    as grime rather than depth.
+  - The skeuomorphic identity is deliberately preserved in both themes: cream dial face,
+    blue segments, red needle, brushed-metal knob. Only their tone is nudged for contrast.
+  - A theme switch now repaints immediately. The render fingerprint includes the resolved
+    theme, so switching no longer waits for some unrelated state change to force a rebuild.
+  - The live drag path reads the palette resolved by the last render, so segments painted
+    mid-gesture get the right colour without a full re-render.
+
+- **`preview.html` renders both themes side by side.** It reproduces the CSS variables a
+  real HA 2026.8 instance exposes — including the *absence* of `--ha-card-background` in
+  the light theme, which is the exact condition that triggered the bug.
+
 ## [2.9.5] - 2026-07-30
 
 ### Fixed

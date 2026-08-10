@@ -3,68 +3,119 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Pool Timer Card — Preview</title>
+  <title>Pool Timer Card — Preview claro / oscuro</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #111;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
       font-family: 'Segoe UI', sans-serif;
-      padding: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      min-height: 100vh;
     }
-    .preview-wrapper {
-      width: 100%;
-      max-width: 420px;
+
+    /* Each panel reproduces the CSS variables Home Assistant actually exposes.
+       Taken from a live HA 2026.8 instance -- note that the light theme does
+       NOT define --ha-card-background at all, which is exactly the condition
+       that used to make the card fall back to its dark literal. */
+    .panel {
+      flex: 1 1 460px;
+      padding: 24px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
     }
-    /* Stub ha-card so the component renders */
+    .panel h2 {
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: 0.6;
+      font-weight: 600;
+    }
+    .panel .wrap { width: 100%; max-width: 420px; }
+
+    .panel--light {
+      /* --ha-card-background deliberately absent */
+      --card-background-color: #fff;
+      --primary-text-color: #141414;
+      --secondary-text-color: #5e5e5e;
+      --primary-background-color: #fafafa;
+      --divider-color: #0000001f;
+      background: #fafafa;
+      color: #141414;
+    }
+    .panel--dark {
+      --ha-card-background: #1C1C1E;
+      --card-background-color: #1C1C1E;
+      --primary-text-color: #E1E1E1;
+      --secondary-text-color: #9B9B9B;
+      --primary-background-color: #111111;
+      --divider-color: #ffffff1f;
+      background: #111111;
+      color: #E1E1E1;
+    }
+
     ha-card { display: block; }
   </style>
 </head>
 <body>
-  <div class="preview-wrapper">
-    <pool-timer-card id="card"></pool-timer-card>
-  </div>
+  <section class="panel panel--light">
+    <h2>Tema claro</h2>
+    <div class="wrap"><pool-timer-card id="cardLight"></pool-timer-card></div>
+  </section>
+
+  <section class="panel panel--dark">
+    <h2>Tema oscuro</h2>
+    <div class="wrap"><pool-timer-card id="cardDark"></pool-timer-card></div>
+  </section>
 
   <script src="pool-timer-card.js"></script>
   <script>
-    // Minimal HA stub for standalone preview
-    const card = document.getElementById('card');
-
-    card.setConfig({
+    const CONFIG = {
       entity: 'switch.pool_pump',
       name: 'Pool Timer',
       schedule_entity: 'input_text.pool_timer_schedule',
       mode_entity: 'input_select.pool_timer_mode',
+      state_entity: 'input_text.pool_timer_state',
       schedule: [
-        { start: '08:00', end: '12:00' },
-        { start: '16:00', end: '18:00' },
+        { start: '08:00', end: '13:00' },
+        { start: '16:00', end: '20:00' },
       ],
-    });
-
-    // Fake hass object for preview
-    const fakeHass = {
-      language: 'es',
-      states: {
-        'switch.pool_pump': { state: 'off', entity_id: 'switch.pool_pump' },
-        'input_text.pool_timer_schedule': { state: '', entity_id: 'input_text.pool_timer_schedule' },
-        'input_select.pool_timer_mode': { state: 'Auto', entity_id: 'input_select.pool_timer_mode' },
-      },
-      callService: (domain, service, data) => {
-        console.log(`[HA Stub] ${domain}.${service}`, data);
-        // Simulate switch toggle
-        if (domain === 'switch') {
-          const sw = fakeHass.states['switch.pool_pump'];
-          sw.state = service === 'turn_on' ? 'on' : 'off';
-          // Re-render after a small delay to simulate HA response
-          setTimeout(() => { card.hass = { ...fakeHass }; }, 500);
-        }
-      },
+      corner_actions: [
+        { name: 'Calentador', icon: '🔥', position: 'tl', service: 'switch', entity_id: 'switch.pool_heater', action: 'toggle' },
+        { name: 'Luz',        icon: '💡', position: 'tr', service: 'switch', entity_id: 'switch.pool_light',  action: 'toggle' },
+      ],
     };
 
-    card.hass = fakeHass;
+    function makeHass(darkMode) {
+      const hass = {
+        language: 'es',
+        themes: { darkMode, theme: 'default', default_theme: 'default' },
+        states: {
+          'switch.pool_pump':                 { state: 'off', entity_id: 'switch.pool_pump' },
+          'switch.pool_heater':               { state: 'off', entity_id: 'switch.pool_heater' },
+          'switch.pool_light':                { state: 'on',  entity_id: 'switch.pool_light' },
+          // `max` must be >= 48 or the card raises a "schedule can't be saved" notice
+          'input_text.pool_timer_schedule':   { state: '', entity_id: 'input_text.pool_timer_schedule',
+                                                attributes: { max: 255 } },
+          'input_text.pool_timer_state':      { state: '', entity_id: 'input_text.pool_timer_state',
+                                                attributes: { max: 255 } },
+          'input_select.pool_timer_mode':     { state: 'Auto', entity_id: 'input_select.pool_timer_mode',
+                                                attributes: { options: ['Auto', 'Perm', 'OFF'] } },
+        },
+        user: { is_admin: true },
+        callService: (domain, service, data) => {
+          console.log(`[HA Stub ${darkMode ? 'dark' : 'light'}] ${domain}.${service}`, data);
+        },
+      };
+      return hass;
+    }
+
+    for (const [id, dark] of [['cardLight', false], ['cardDark', true]]) {
+      const card = document.getElementById(id);
+      card.setConfig(JSON.parse(JSON.stringify(CONFIG)));
+      card.hass = makeHass(dark);
+    }
   </script>
 </body>
 </html>

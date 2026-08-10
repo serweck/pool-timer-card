@@ -133,7 +133,19 @@ const R_TICK_INNER = 148;
 const R_NEEDLE    = 155;
 const R_KNOB      = 50;
 
-const COLORS = {
+/* Two palettes: the card follows Home Assistant's theme.
+ *
+ * Note on `cardBg`: HA does NOT always define `--ha-card-background` (in the
+ * stock light theme it is simply absent), so it must chain to
+ * `--card-background-color` before reaching the literal fallback. Relying on
+ * `--ha-card-background` alone is what used to paint the card black in the
+ * light theme while `--primary-text-color` correctly resolved to near-black —
+ * dark text on a dark card.
+ *
+ * The dial face (`numBg` cream + dark `numText`), the blue "on" segments and
+ * the red needle are the physical-timer identity of the card and stay
+ * recognisable in both themes; only their tone is nudged for contrast. */
+const PALETTE_DARK = {
   bg:          '#1C1C1E',
   segOn:       '#4A90D9',
   segOnStroke: '#5BA0E9',
@@ -149,10 +161,67 @@ const COLORS = {
   modeActive:  '#4A90D9',
   modeInactive:'#3A3A3C',
   border:      '#3A3A3C',
-  cardBg:      'var(--ha-card-background, #1C1C1E)',
+  cardBg:      'var(--ha-card-background, var(--card-background-color, #1C1C1E))',
   textPrimary: 'var(--primary-text-color, #E5E5E7)',
   textSecondary:'var(--secondary-text-color, #8E8E93)',
+  // Controls
+  ctrlHover:   '#4A4A4E',
+  optionBg:    '#2C2C2E',
+  onAccentText:'#FFFFFF',
+  warnText:    '#1C1C1E',
+  // Knob (brushed-metal look)
+  knobOuterFrom:'#8E8E93',
+  knobOuterTo:  '#48484A',
+  knobInnerFrom:'#6E6E73',
+  knobInnerTo:  '#3A3A3C',
+  knobStroke:   'rgba(255,255,255,0.10)',
+  knobRidge:    'rgba(255,255,255,0.15)',
+  // Depth
+  cardShadow:  '0 4px 24px rgba(0,0,0,0.4)',
+  segShadow:   'rgba(0,0,0,0.3)',
+  cornerShadow:'rgba(0,0,0,0.3)',
 };
+
+const PALETTE_LIGHT = {
+  bg:          '#FFFFFF',
+  segOn:       '#2F7FD1',
+  segOnStroke: '#1E6BB8',
+  segOff:      '#C9D8E6',
+  segOffStroke:'#A3BAD0',
+  segHover:    '#5FA6E8',
+  numBg:       '#FBFAF5',
+  numText:     '#2C2C2E',
+  needle:      '#E02418',
+  ledOn:       '#1E9E45',
+  ledOff:      '#D9291C',
+  ledRetry:    '#C77700',
+  modeActive:  '#2F7FD1',
+  modeInactive:'#EFEFF4',
+  border:      '#D1D1D6',
+  cardBg:      'var(--ha-card-background, var(--card-background-color, #FFFFFF))',
+  textPrimary: 'var(--primary-text-color, #141414)',
+  textSecondary:'var(--secondary-text-color, #5E5E5E)',
+  // Controls
+  ctrlHover:   '#E2E2E8',
+  optionBg:    '#FFFFFF',
+  onAccentText:'#FFFFFF',
+  warnText:    '#1C1C1E',
+  // Knob (same brushed metal, a touch lighter so it doesn't punch a hole)
+  knobOuterFrom:'#B8B8BD',
+  knobOuterTo:  '#78787D',
+  knobInnerFrom:'#A0A0A6',
+  knobInnerTo:  '#6E6E73',
+  knobStroke:   'rgba(0,0,0,0.14)',
+  knobRidge:    'rgba(0,0,0,0.18)',
+  // Depth — lighter shadows, a heavy drop shadow reads as dirt on white
+  cardShadow:  '0 2px 10px rgba(0,0,0,0.10)',
+  segShadow:   'rgba(0,0,0,0.16)',
+  cornerShadow:'rgba(0,0,0,0.20)',
+};
+
+function palette(isDark) {
+  return isDark ? PALETTE_DARK : PALETTE_LIGHT;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Retry logic — exponential backoff                                  */
@@ -422,6 +491,18 @@ class PoolTimerCard extends HTMLElement {
     this._render();
   }
 
+  // Which palette to paint with. Home Assistant resolves the active theme --
+  // including "auto" following the OS -- into `hass.themes.darkMode`, so that
+  // is the source of truth whenever we have a hass object. The matchMedia
+  // fallback is for standalone use (preview.html), where there is no hass.
+  _isDark() {
+    const dm = this._hass?.themes?.darkMode;
+    if (typeof dm === 'boolean') return dm;
+    return typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : true;
+  }
+
   // A compact fingerprint of everything the card renders. If it's unchanged
   // since the last render we can safely skip rebuilding the DOM.
   _renderSignature() {
@@ -439,6 +520,9 @@ class PoolTimerCard extends HTMLElement {
       this._preset || '',
       this._retryState || '',
       schedMax, hasState, hasMode,
+      // Without this a theme switch would not change the fingerprint and the
+      // card would keep the old palette until some unrelated state changed.
+      this._isDark() ? 'd' : 'l',
     ];
     // Include corner action states so the card re-renders when a corner entity changes.
     for (let i = 0; i < (this._config.corner_actions || []).length; i++) {
@@ -707,8 +791,11 @@ class PoolTimerCard extends HTMLElement {
     this._segments[idx] = value;
     const seg = this.shadowRoot.querySelector(`.seg[data-idx="${idx}"]`);
     if (seg) {
-      seg.setAttribute('fill', value ? COLORS.segOn : COLORS.segOff);
-      seg.setAttribute('stroke', value ? COLORS.segOnStroke : COLORS.segOffStroke);
+      // Live drag path: no re-render happens here, so read the palette that the
+      // last _render() resolved rather than a module-level constant.
+      const C = this._colors || palette(this._isDark());
+      seg.setAttribute('fill', value ? C.segOn : C.segOff);
+      seg.setAttribute('stroke', value ? C.segOnStroke : C.segOffStroke);
       seg.classList.toggle('seg--on', value);
       seg.classList.toggle('seg--off', !value);
     }
@@ -1011,6 +1098,10 @@ class PoolTimerCard extends HTMLElement {
   /* ----- render --------------------------------------------------- */
   _render() {
     if (!this.shadowRoot) return;
+    // Resolve the palette once per render. Declaring it as `COLORS` shadows the
+    // module scope on purpose, so every `${COLORS.x}` below is theme-aware.
+    // `this._colors` is what the live drag path in _applySegment() reads.
+    const COLORS = this._colors = palette(this._isDark());
     const lang = this._lang;
     const entityState = this._hass?.states[this._config.entity];
     const pumpOn = entityState?.state === 'on';
@@ -1087,7 +1178,7 @@ class PoolTimerCard extends HTMLElement {
       const p1 = polarToXY(CX, CY, R_KNOB - 2, a);
       const p2 = polarToXY(CX, CY, R_KNOB - 8, a);
       knobRidges += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"
-        stroke="rgba(255,255,255,0.15)" stroke-width="1.5" stroke-linecap="round"/>`;
+        stroke="${COLORS.knobRidge}" stroke-width="1.5" stroke-linecap="round"/>`;
     }
 
     // Status text
@@ -1205,7 +1296,7 @@ class PoolTimerCard extends HTMLElement {
           border-radius: 16px;
           padding: 20px 16px 16px;
           border: 1px solid ${COLORS.border};
-          box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+          box-shadow: ${COLORS.cardShadow};
           font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
           user-select: none;
           -webkit-user-select: none;
@@ -1313,7 +1404,7 @@ class PoolTimerCard extends HTMLElement {
           justify-content: center;
           transition: all 0.2s ease;
           padding: 0;
-          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+          filter: drop-shadow(0 1px 2px ${COLORS.cornerShadow});
         }
         .corner-btn:hover {
           transform: scale(1.15);
@@ -1338,7 +1429,7 @@ class PoolTimerCard extends HTMLElement {
         .seg {
           cursor: pointer;
           transition: filter 0.15s ease, transform 0.1s ease;
-          filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
+          filter: drop-shadow(0 1px 1px ${COLORS.segShadow});
           /* Allow vertical page scroll to start even from a segment; the
              pointer handlers detect a horizontal drag / tap to edit instead.
              pan-y lets the browser own vertical gestures (it fires
@@ -1381,7 +1472,7 @@ class PoolTimerCard extends HTMLElement {
         /* Knob */
         .knob-outer {
           fill: url(#knob-gradient);
-          stroke: rgba(255,255,255,0.1);
+          stroke: ${COLORS.knobStroke};
           stroke-width: 1;
         }
         .knob-inner {
@@ -1407,11 +1498,11 @@ class PoolTimerCard extends HTMLElement {
           letter-spacing: 0.3px;
         }
         .mode-btn:hover {
-          background: #4A4A4E;
+          background: ${COLORS.ctrlHover};
         }
         .mode-btn--active {
           background: ${COLORS.modeActive};
-          color: #fff;
+          color: ${COLORS.onAccentText};
           border-color: ${COLORS.segOnStroke};
           box-shadow: 0 2px 12px rgba(74,144,217,0.3);
         }
@@ -1431,7 +1522,7 @@ class PoolTimerCard extends HTMLElement {
           cursor: pointer;
         }
         .mode-select:hover {
-          background: #4A4A4E;
+          background: ${COLORS.ctrlHover};
         }
         .mode-select:focus {
           outline: none;
@@ -1439,7 +1530,7 @@ class PoolTimerCard extends HTMLElement {
           box-shadow: 0 2px 12px rgba(74,144,217,0.3);
         }
         .mode-select option {
-          background: #2c2c2e;
+          background: ${COLORS.optionBg};
           color: ${COLORS.textPrimary};
         }
 
@@ -1458,7 +1549,7 @@ class PoolTimerCard extends HTMLElement {
           cursor: pointer;
         }
         .preset-select:hover {
-          background: #4A4A4E;
+          background: ${COLORS.ctrlHover};
         }
         .preset-select:focus {
           outline: none;
@@ -1466,7 +1557,7 @@ class PoolTimerCard extends HTMLElement {
           box-shadow: 0 2px 12px rgba(74,144,217,0.3);
         }
         .preset-select option {
-          background: #2c2c2e;
+          background: ${COLORS.optionBg};
           color: ${COLORS.textPrimary};
         }
 
@@ -1530,17 +1621,17 @@ class PoolTimerCard extends HTMLElement {
           cursor: pointer;
         }
         .chip:hover {
-          background: #4A4A4E;
+          background: ${COLORS.ctrlHover};
         }
         .chip--active {
           background: ${COLORS.modeActive};
-          color: #fff;
+          color: ${COLORS.onAccentText};
           border-color: ${COLORS.segOnStroke};
           box-shadow: 0 2px 12px rgba(74,144,217,0.3);
         }
         .chip--warn-active {
           background: ${COLORS.ledRetry};
-          color: #1C1C1E;
+          color: ${COLORS.warnText};
           border-color: ${COLORS.ledRetry};
           box-shadow: 0 2px 12px rgba(255,149,0,0.35);
         }
@@ -1621,12 +1712,12 @@ class PoolTimerCard extends HTMLElement {
             <svg class="dial-svg" viewBox="0 0 ${SVG_SIZE} ${SVG_SIZE}" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <radialGradient id="knob-gradient" cx="40%" cy="35%" r="60%">
-                  <stop offset="0%" stop-color="#8E8E93"/>
-                  <stop offset="100%" stop-color="#48484A"/>
+                  <stop offset="0%" stop-color="${COLORS.knobOuterFrom}"/>
+                  <stop offset="100%" stop-color="${COLORS.knobOuterTo}"/>
                 </radialGradient>
                 <radialGradient id="knob-inner-gradient" cx="45%" cy="40%" r="50%">
-                  <stop offset="0%" stop-color="#6E6E73"/>
-                  <stop offset="100%" stop-color="#3A3A3C"/>
+                  <stop offset="0%" stop-color="${COLORS.knobInnerFrom}"/>
+                  <stop offset="100%" stop-color="${COLORS.knobInnerTo}"/>
                 </radialGradient>
                 <filter id="seg-shadow">
                   <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.35"/>
@@ -2283,7 +2374,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.9.5 ',
+  '%c POOL-TIMER-CARD %c v2.9.6 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );
