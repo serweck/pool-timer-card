@@ -147,6 +147,7 @@ corner_actions:
 | `schedule_entity` | string | ❌ | `input_text.pool_timer_schedule` | Helper storing the 48-segment schedule |
 | `mode_entity` | string | ❌ | `input_select.pool_timer_mode` | Helper storing the operation mode |
 | `state_entity` | string | ❌ | `input_text.pool_timer_state` | Helper storing preset + running action |
+| `preset_entity` | string | ❌ | — | `input_select` whose options are your preset names. Set it to store presets on the server (see [Server-side presets](#server-side-presets)) |
 | `quick_actions` | list | ❌ | Flocculant, Treatment | Array of timed actions with `name`, `hours`, `icon`, `after` |
 | `flocculant_hours` | number | ❌ | `2` | (Legacy) Hours for flocculant action |
 | `product_hours` | number | ❌ | `3` | (Legacy) Hours for treatment action |
@@ -182,9 +183,60 @@ Use the **Presets dropdown** (when you have presets configured) to:
 
 When you manually edit the dial, the selector switches to **Custom** so you know
 you're in edit mode — **unless** your edit happens to match a configured preset
-exactly, in which case the selector snaps to that preset automatically. Presets
-are defined in the card YAML (`presets:`) and editing does not modify the
-original preset definition.
+exactly, in which case the selector snaps to that preset automatically.
+
+### Server-side presets
+
+By default presets live in the card's YAML, which means only the card knows them:
+an automation that wants to apply "Verano" has to repeat its 48-character string,
+and the two drift apart the moment you edit one.
+
+Set `preset_entity` and the presets move to Home Assistant instead, where
+automations and the blueprint can read them:
+
+```yaml
+type: custom:pool-timer-card
+entity: switch.pool_pump
+preset_entity: input_select.pool_timer_preset
+```
+
+Two kinds of entity back it:
+
+| Entity | Holds |
+|---|---|
+| The `input_select` you named | Its **options are** the preset names, plus `Custom` |
+| One `input_text` per preset | That preset's 48-character schedule |
+
+The `input_text` for a preset is found by its **friendly name** — `Pool Timer
+Preset <name>` — not by its entity id. Home Assistant does not guarantee a
+helper's entity id is derivable from its name, so the name is the link. Rename a
+helper in Settings and the card treats that preset as missing.
+
+`Custom` is not a preset. It is the absence of a match: the card selects it when
+your schedule matches nothing, and the blueprint ignores it.
+
+#### Migrating
+
+Press **Create helpers** on the card once. It creates the `input_select` and one
+`input_text` per preset, **seeded with the schedules your YAML holds today**. After
+that the `presets:` block in your YAML is no longer read — it stays only as the
+seed for anyone who has not migrated yet.
+
+Nothing breaks if you never migrate: without `preset_entity` the card reads
+`presets:` exactly as before.
+
+#### Managing presets
+
+With `preset_entity` set, the card's visual editor can add, edit and delete
+presets. Adding creates the option and its helper; deleting removes **both**.
+
+The name is read-only there. Renaming would mean deleting and recreating the
+helper, so rename by deleting the preset and creating it again.
+
+> [!TIP]
+> An option whose helper is missing shows greyed out with a ⚠ and cannot be
+> selected — selecting it would apply an empty schedule. Press **Create helpers**
+> to create what is missing.
 
 ### Editing on touch devices
 
@@ -402,6 +454,38 @@ presets:
 A common need: run a longer schedule at the weekend and a shorter one on working
 days — but only while you are in "summer", leaving your winter schedule alone.
 
+**With [server-side presets](#server-side-presets)** this is the whole automation,
+with no schedule string in sight:
+
+```yaml
+alias: Pool - summer schedule (short on weekdays, long at the weekend)
+triggers:
+  - trigger: time
+    at: "00:00:00"
+  - trigger: homeassistant
+    event: start
+conditions:
+  # Only while a summer preset is active — leaves Invierno or a hand-drawn
+  # schedule alone.
+  - condition: state
+    entity_id: input_select.pool_timer_preset
+    state: ["Verano", "Verano corto"]
+actions:
+  - action: input_select.select_option
+    target:
+      entity_id: input_select.pool_timer_preset
+    data:
+      option: >-
+        {{ 'Verano' if now().isoweekday() in [6, 7] else 'Verano corto' }}
+mode: single
+```
+
+Edit a preset on the dial and this automation applies the new version at the next
+switch, because it is the same data.
+
+<details>
+<summary>Without server-side presets (writing the schedule string directly)</summary>
+
 ```yaml
 alias: Pool - summer schedule (short on weekdays, long at the weekend)
 description: >-
@@ -482,8 +566,11 @@ blueprint warns about in its own comments.
 > [!NOTE]
 > The schedule string is duplicated between your `presets:` config and this automation,
 > and nothing keeps the two in sync: editing a preset on the dial will not change what
-> this automation applies. Until presets are stored server-side, treat the automation as
-> the place you must remember to update too.
+> this automation applies. This is exactly what [server-side
+> presets](#server-side-presets) remove — with them, the automation above collapses to a
+> single `input_select.select_option`.
+
+</details>
 
 ## Required: install the blueprint (browser-independent operation)
 
@@ -512,6 +599,15 @@ https://github.com/serweck/pool-timer-card/blob/main/blueprints/pool_timer.yaml
 
 Pick the four entities in the dropdowns — the pump switch and the three helpers
 (`schedule`, `mode`, `state`). No YAML editing required.
+
+A fifth input, **Preset helper**, is optional: set it to your `preset_entity` and
+selecting a preset applies its schedule server-side, with no dashboard open. Leave
+it empty if you have not moved presets to the server.
+
+> [!IMPORTANT]
+> Upgrading from a version before 2.10.0? **Re-import the blueprint** so the Preset
+> helper input appears. Existing automations keep working untouched until you do —
+> the new input defaults to empty.
 
 That's it. The card stays a pure UI and the blueprint owns the pump; explicit taps on
 the card still act **immediately** for a snappy response, and the blueprint reconciles

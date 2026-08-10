@@ -4,6 +4,69 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.10.0] - 2026-08-10
+
+### Added
+- **Presets can be stored on the server instead of in the card's YAML.** Set the new
+  `preset_entity` option to an `input_select` and its options become your preset list;
+  each preset's 48-character schedule lives in its own `input_text`. Automations, the
+  blueprint and the card then all read the same data, so switching preset from an
+  automation no longer means repeating the schedule string somewhere it can drift:
+
+  ```yaml
+  - action: input_select.select_option
+    target: { entity_id: input_select.pool_timer_preset }
+    data: { option: Verano }
+  ```
+
+  The preset's `input_text` is located by its **friendly name** (`Pool Timer Preset
+  <name>`), never by entity id. Home Assistant does not guarantee a helper's entity id
+  is derivable from its name or from its collection id — one whose id is
+  `integracionalarmaajax` can live at `input_select.integracion_alarma_ajax` — so the
+  name is the only stable link. It also removes slug collisions: `Verano 1` and
+  `Verano-1` would slugify identically but are distinct names.
+
+- **One-click migration.** *Create helpers* now also builds the `input_select` and one
+  `input_text` per preset, **seeded with the schedules your YAML holds today**. Nothing
+  breaks if you never press it: without `preset_entity` the card reads `presets:`
+  exactly as before.
+
+- **The visual editor manages presets.** Add, edit and delete, with deletion removing
+  the option *and* its helper. The name is read-only: renaming means deleting and
+  recreating the helper, so renaming is delete + create.
+
+- **The blueprint gained an optional Preset helper input.** Selecting a preset applies
+  its schedule server-side, with no dashboard open — which is the whole point.
+
+### Changed
+- The card follows the Home Assistant theme in the preset dropdown too: an option whose
+  helper is missing renders disabled with a ⚠ rather than being hidden. Hiding it is
+  baffling when you just added it in Settings, and selecting it would apply an empty
+  schedule.
+- With `preset_entity` set, the label derived from the segments is now pushed back to
+  that entity, so the server reflects what is actually scheduled. Previous versions
+  derived the label for display only.
+
+### Upgrading
+> [!IMPORTANT]
+> **Re-import the blueprint** so the Preset helper input appears. Existing automations
+> keep working untouched until you do — the new input defaults to empty.
+>
+> Then set `preset_entity` on the card and press **Create helpers** once to migrate.
+> Both steps are optional: without them this release behaves exactly like 2.9.6.
+
+### Notes
+- An `input_text` caps at 255 characters, so storing every preset as one JSON blob was
+  rejected: three presets already reach ~219 characters and the fourth would fail the
+  service call. One helper per preset has no such ceiling and keeps the schedule
+  readable.
+- The blueprint writes in one direction only — it reads the `input_select` and writes
+  the schedule, never the reverse. Deriving the label server-side as well would put both
+  directions inside one `mode: restart` automation, where a single unguarded write
+  becomes a ping-pong between two entities. The cost is that the selector can read stale
+  if an automation writes the schedule *directly* with no dashboard open; it corrects
+  itself as soon as one is opened.
+
 ## [2.9.6] - 2026-08-10
 
 ### Fixed
