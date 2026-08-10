@@ -316,6 +316,71 @@ function segmentArc(cx, cy, rOuter, rInner, startDeg, endDeg) {
 /* ------------------------------------------------------------------ */
 const PRESET_PREFIX = 'Pool Timer Preset ';
 
+/* --- Hour ranges <-> 48 half-hour segments ------------------------------
+ *
+ * The bitstring is what gets stored, but nobody should have to read or type it.
+ * These convert both ways so the editor can speak in "10:00-14:00, 16:00-19:30"
+ * exactly like the YAML `presets:` always did.
+ */
+
+// Ranges -> 48 booleans. Shared with the card, which used to own this privately.
+// Handles the midnight wrap: an end at or before the start rolls into the next day.
+function rangesToSegments(ranges) {
+  const segs = new Array(SEGMENT_COUNT).fill(false);
+  for (const r of (ranges || [])) {
+    const [sh, sm] = String(r.start).split(':').map(Number);
+    const [eh, em] = String(r.end).split(':').map(Number);
+    const startIdx = sh * 2 + (sm >= 30 ? 1 : 0);
+    let endIdx = eh * 2 + (em >= 30 ? 1 : 0);
+    if (endIdx <= startIdx) endIdx += SEGMENT_COUNT;
+    for (let i = startIdx; i < endIdx; i++) segs[i % SEGMENT_COUNT] = true;
+  }
+  return segs;
+}
+
+// 48 booleans -> ranges. The inverse, including re-joining a run that wraps
+// midnight so 23:00-01:00 comes back as one range instead of two.
+function segmentsToRanges(segs) {
+  const n = SEGMENT_COUNT;
+  const hhmm = (i) => `${String(Math.floor(i / 2) % 24).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+  const runs = [];
+  let i = 0;
+  while (i < n) {
+    if (!segs[i]) { i++; continue; }
+    let j = i;
+    while (j < n && segs[j]) j++;
+    runs.push([i, j]);
+    i = j;
+  }
+  // A run touching both ends of the day is one run through midnight, not two.
+  // Skip when it is the *only* run and covers everything — that is "all day".
+  if (runs.length > 1 && runs[0][0] === 0 && runs[runs.length - 1][1] === n) {
+    const ultimo = runs.pop();
+    runs[0] = [ultimo[0], n + runs[0][1]];
+  }
+  return runs.map(([a, b]) => ({ start: hhmm(a), end: b === n ? '24:00' : hhmm(b % n) }));
+}
+
+function rangesToText(ranges) {
+  return (ranges || []).map(r => `${r.start}-${r.end}`).join(', ');
+}
+
+// Text -> ranges, or null when it does not parse. Returning null rather than a
+// partial list matters: a half-typed range must never be written to a helper.
+function parseRangesText(txt) {
+  const trozos = String(txt || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!trozos.length) return null;
+  const out = [];
+  for (const p of trozos) {
+    const m = p.match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const [, sh, sm, eh, em] = m;
+    if (+sh > 24 || +eh > 24 || +sm > 59 || +em > 59) return null;
+    out.push({ start: `${sh.padStart(2, '0')}:${sm}`, end: `${eh.padStart(2, '0')}:${em}` });
+  }
+  return out;
+}
+
 // entity_id of the input_text holding `name`'s schedule, or null when absent.
 function presetHelperEntity(hass, name) {
   if (!hass || !name) return null;
@@ -728,17 +793,10 @@ class PoolTimerCard extends HTMLElement {
   }
 
   // Convert a list of {start,end} time ranges into a 48-slot boolean array.
+  // Kept as a method for the existing call sites; the logic lives at module scope
+  // so the visual editor can use it too.
   _rangesToSegments(ranges) {
-    const segs = new Array(SEGMENT_COUNT).fill(false);
-    for (const r of (ranges || [])) {
-      const [sh, sm] = String(r.start).split(':').map(Number);
-      const [eh, em] = String(r.end).split(':').map(Number);
-      const startIdx = sh * 2 + (sm >= 30 ? 1 : 0);
-      let endIdx = eh * 2 + (em >= 30 ? 1 : 0);
-      if (endIdx <= startIdx) endIdx += SEGMENT_COUNT;
-      for (let i = startIdx; i < endIdx; i++) segs[i % SEGMENT_COUNT] = true;
-    }
-    return segs;
+    return rangesToSegments(ranges);
   }
 
   // The "after" behavior of the currently running timed action, or null when no
@@ -2197,20 +2255,25 @@ class PoolTimerCardEditor extends HTMLElement {
     const header = `
       <div class="list-header preset-header">
         <span>Name</span>
-        <span>Schedule (48 × 0/1)</span>
+        <span>Time ranges</span>
         <span></span>
       </div>
     `;
     const filas = nombres.map(name => {
       const eid = presetHelperEntity(this._hass, name);
-      const val = eid ? (this._hass.states[eid]?.state || '') : '';
+      const bits = eid ? (this._hass.states[eid]?.state || '') : '';
+      // Shown as hours, stored as bits. An unparseable helper shows empty rather
+      // than leaking a malformed bitstring into a field that expects times.
+      const val = new RegExp(`^[01]{${SEGMENT_COUNT}}$`).test(bits)
+        ? rangesToText(segmentsToRanges(bits.split('').map(c => c === '1')))
+        : '';
       return `
         <div class="list-item preset-item">
           <input type="text" class="preset-name" value="${escapeHtml(name)}" readonly
             title="Renaming means delete + create" />
-          <input type="text" class="preset-bits" data-name="${escapeHtml(name)}"
+          <input type="text" class="preset-hours" data-name="${escapeHtml(name)}"
             value="${escapeHtml(val)}" ${eid ? '' : 'disabled'}
-            placeholder="${eid ? '48 × 0/1' : 'helper missing — run Create helpers'}" />
+            placeholder="${eid ? '10:00-14:00, 16:00-19:30' : 'helper missing — run Create helpers'}" />
           <button class="btn-delete" type="button" data-name="${escapeHtml(name)}"
             tabindex="-1" title="Delete preset and its helper">✕</button>
         </div>
@@ -2340,14 +2403,13 @@ class PoolTimerCardEditor extends HTMLElement {
           opacity: 0.75;
           cursor: default;
         }
-        /* The 48-char field is the one place a typo silently changes the pump's
-           schedule, so it gets a monospace face where miscounting is visible. */
-        .preset-bits {
-          font-family: 'Consolas', 'Menlo', monospace;
-          font-size: 11px;
-          letter-spacing: 0.5px;
+        /* Tabular figures keep the times column-aligned across rows, so a wrong
+           hour stands out instead of hiding in a ragged list. */
+        .preset-hours {
+          font-variant-numeric: tabular-nums;
+          font-size: 12px;
         }
-        .preset-bits:disabled { opacity: 0.5; }
+        .preset-hours:disabled { opacity: 0.5; }
         .new-preset-name {
           width: 100%;
           margin-bottom: 6px;
@@ -2583,18 +2645,24 @@ class PoolTimerCardEditor extends HTMLElement {
     // Listen on `change`, never on `input`, and validate before writing. On `input`
     // every keystroke would push a half-typed string into the helper, and if that
     // preset is the selected one the blueprint would apply it to the pump.
-    root.querySelectorAll('.preset-bits').forEach(input => {
-      input.addEventListener('change', (e) => {
-        const bits = e.target.value.trim();
-        if (!new RegExp(`^[01]{${SEGMENT_COUNT}}$`).test(bits)) {
-          e.target.setCustomValidity(`Must be exactly ${SEGMENT_COUNT} characters of 0 or 1`);
+    root.querySelectorAll('.preset-hours').forEach(input => {
+      input.addEventListener('change', async (e) => {
+        const rangos = parseRangesText(e.target.value);
+        if (!rangos) {
+          e.target.setCustomValidity('Use HH:MM-HH:MM, comma separated. e.g. 10:00-14:00, 16:00-19:30');
           e.target.reportValidity();
           return;
         }
         e.target.setCustomValidity('');
+        const bits = rangesToSegments(rangos).map(s => (s ? '1' : '0')).join('');
         const eid = presetHelperEntity(this._hass, e.target.dataset.name);
-        if (eid) this._hass.callService('input_text', 'set_value',
+        if (!eid) return;
+        await this._hass.callService('input_text', 'set_value',
           { entity_id: eid, value: bits });
+        // Re-render from what was actually stored. Times are snapped to half hours,
+        // so 10:15 becomes 10:00 — better to show that than to leave the field
+        // claiming something the schedule does not do.
+        setTimeout(() => this._render(), 700);
       });
     });
 
@@ -2750,7 +2818,7 @@ window.customCards.push({
 });
 
 console.info(
-  '%c POOL-TIMER-CARD %c v2.10.1 ',
+  '%c POOL-TIMER-CARD %c v2.11.0 ',
   'background:#4A90D9;color:#fff;font-weight:700;padding:2px 6px;border-radius:4px 0 0 4px',
   'background:#1A3A5C;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0'
 );

@@ -4,6 +4,22 @@ All notable changes to the Pool Timer Card are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.11.0] - 2026-08-10
+
+### Changed
+- **Presets are edited as time ranges again, not as a 48-character bitstring.** The
+  server-side preset editor introduced in 2.10.0 exposed the raw storage format, which
+  is unreadable and easy to miscount. It now takes `10:00-14:00, 16:00-19:30` — the same
+  notation the YAML `presets:` always used — and converts to and from the bitstring
+  underneath. The stored format is unchanged, so nothing else has to care.
+  - Times snap to half hours, and the field **re-renders from what was actually
+    stored**: type `10:15-14:20` and it comes back as `10:00-14:00`, rather than
+    displaying a schedule the pump does not follow.
+  - A range crossing midnight survives the round trip: `23:00-01:00` comes back as one
+    range, not as `00:00-01:00, 23:00-24:00`.
+  - Input that does not parse is rejected before anything is written, so a half-typed
+    range can never reach a helper — and from there the pump.
+
 ## [2.10.1] - 2026-08-10
 
 ### Fixed
